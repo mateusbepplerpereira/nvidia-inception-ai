@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nvidia_postgres
+    environment:
+      POSTGRES_USER: nvidia_user
+      POSTGRES_PASSWORD: nvidia_pass
+      POSTGRES_DB: nvidia_inception_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nvidia_network
+
+  backend:
+    build: ./backend
+    container_name: nvidia_backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL=postgresql://nvidia_user:nvidia_pass@postgres:5432/nvidia_inception_db
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    networks:
+      - nvidia_network
+
+volumes:
+  postgres_data:
+
+networks:
+  nvidia_network:
+    driver: bridge

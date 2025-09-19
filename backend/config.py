@@ -1,0 +1,36 @@
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+class Settings(BaseSettings):
+    # OpenAI Configuration
+    openai_api_key: str
+    openai_model: str = "gpt-4o-mini"
+    openai_temperature: float = 0.3
+    openai_max_tokens: int = 1500
+
+    # Database Configuration
+    database_url: str
+    db_host: str = "postgres"
+    db_port: int = 5432
+    db_user: str = "nvidia_user"
+    db_pass: str = "nvidia_pass"
+    db_name: str = "nvidia_inception_db"
+
+    # API Configuration
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    debug: bool = True
+
+    # CrewAI Configuration
+    crew_max_iterations: int = 3
+    crew_memory: bool = True
+
+    # Data Sources (Optional)
+    crunchbase_api_key: Optional[str] = None
+    serper_api_key: Optional[str] = None  # For web search if available
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
+settings = Settings()
