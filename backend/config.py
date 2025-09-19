@@ -21,9 +21,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     debug: bool = True
 
-    # CrewAI Configuration
-    crew_max_iterations: int = 3
-    crew_memory: bool = True
+    # Agent Configuration
+    agent_timeout: int = 60
+    agent_max_tokens: int = 3000
 
     # Data Sources (Optional)
     crunchbase_api_key: Optional[str] = None

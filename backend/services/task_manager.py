@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from database.connection import get_db
 from services.agent_service import AgentService
-from agents.startup_crew import StartupDiscoveryCrew
+from agents.direct_openai import DirectOpenAIAgent
 
 class TaskManager:
     _instance = None
@@ -104,8 +104,8 @@ def process_discovery_task(task_id: int, country: str, sector: str):
         print(f"🚀 Iniciando discovery para {country} - {sector or 'todos setores'}")
 
         # Create agent and run discovery
-        crew = StartupDiscoveryCrew()
-        result = crew.discover_startups(country, sector)
+        agent = DirectOpenAIAgent()
+        result = agent.discover_startups(country, sector)
 
         # Save results
         service.update_task(task_id, "completed", result)

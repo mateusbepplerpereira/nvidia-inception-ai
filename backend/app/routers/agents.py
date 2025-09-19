@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any, List
 from database.connection import get_db
 from database import models
-from agents.startup_crew import StartupDiscoveryCrew
+from agents.direct_openai import DirectOpenAIAgent
 from agents.validation_agent import StartupValidationAgent
 from schemas.agent import AgentTaskRequest, AgentTaskResponse
 from services.agent_service import AgentService
@@ -21,7 +21,7 @@ async def discover_startups(
     # Create task record
     task = service.create_task(
         task_type="discovery",
-        agent_name="StartupDiscoveryCrew",
+        agent_name="DirectOpenAIAgent",
         input_data=request.dict()
     )
 
@@ -46,7 +46,7 @@ async def analyze_startup(
     db: Session = Depends(get_db)
 ):
     service = AgentService(db)
-    crew = StartupDiscoveryCrew()
+    agent = DirectOpenAIAgent()
 
     # Get startup data
     startup = db.query(models.Startup).filter(models.Startup.id == startup_id).first()
@@ -62,7 +62,7 @@ async def analyze_startup(
         "funding": startup.last_funding_amount
     }
 
-    result = crew.analyze_single_startup(startup_data)
+    result = agent.analyze_startup(startup_data)
 
     # Save analysis
     service.save_analysis(startup_id, result)
@@ -81,7 +81,7 @@ async def batch_discover_startups(
     for country in countries:
         task = service.create_task(
             task_type="discovery",
-            agent_name="StartupDiscoveryCrew",
+            agent_name="DirectOpenAIAgent",
             input_data={"country": country, "limit": 5}
         )
         tasks.append(task)
