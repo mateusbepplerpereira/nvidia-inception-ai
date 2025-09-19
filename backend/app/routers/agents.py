@@ -1,105 +1,47 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Dict, Any, List
 from database.connection import get_db
 from database import models
-from agents.direct_openai import DirectOpenAIAgent
-from agents.validation_agent import StartupValidationAgent
 from schemas.agent import AgentTaskRequest, AgentTaskResponse
 from services.agent_service import AgentService
-from services.task_manager import task_manager, process_discovery_task
+from services.task_manager import task_manager, process_orchestration_task
 
 router = APIRouter()
 
-@router.post("/discover", response_model=AgentTaskResponse)
-async def discover_startups(
+@router.post("/task/run", response_model=AgentTaskResponse)
+async def run_startup_pipeline(
     request: AgentTaskRequest,
     db: Session = Depends(get_db)
 ):
+    """Rota unificada para orquestração completa: Discovery → Validation → Metrics"""
     service = AgentService(db)
 
     # Create task record
     task = service.create_task(
-        task_type="discovery",
-        agent_name="DirectOpenAIAgent",
+        task_type="orchestration",
+        agent_name="LangGraphOrchestrator",
         input_data=request.dict()
     )
 
     # Enqueue task for async processing
     task_manager.enqueue_task(
         task.id,
-        process_discovery_task,
+        process_orchestration_task,
         task.id,
         request.country,
-        request.sector
+        request.sector,
+        getattr(request, 'limit', 5)
     )
 
     return AgentTaskResponse(
         task_id=task.id,
         status="pending",
-        message=f"Discovery task queued (queue size: {task_manager.get_queue_size()})"
+        message=f"Orchestration pipeline queued (queue size: {task_manager.get_queue_size()})"
     )
 
-@router.post("/analyze/{startup_id}")
-async def analyze_startup(
-    startup_id: int,
-    db: Session = Depends(get_db)
-):
-    service = AgentService(db)
-    agent = DirectOpenAIAgent()
-
-    # Get startup data
-    startup = db.query(models.Startup).filter(models.Startup.id == startup_id).first()
-    if not startup:
-        raise HTTPException(status_code=404, detail="Startup not found")
-
-    # Run analysis
-    startup_data = {
-        "name": startup.name,
-        "website": startup.website,
-        "sector": startup.sector,
-        "ai_technologies": startup.ai_technologies,
-        "funding": startup.last_funding_amount
-    }
-
-    result = agent.analyze_startup(startup_data)
-
-    # Save analysis
-    service.save_analysis(startup_id, result)
-
-    return result
-
-@router.post("/batch-discover")
-async def batch_discover_startups(
-    countries: List[str] = ["Brazil", "Argentina", "Mexico"],
-    db: Session = Depends(get_db)
-):
-    """Discover startups from multiple countries"""
-    service = AgentService(db)
-    tasks = []
-
-    for country in countries:
-        task = service.create_task(
-            task_type="discovery",
-            agent_name="DirectOpenAIAgent",
-            input_data={"country": country, "limit": 5}
-        )
-        tasks.append(task)
-
-        # Enqueue each country discovery
-        task_manager.enqueue_task(
-            task.id,
-            process_discovery_task,
-            task.id,
-            country,
-            None
-        )
-
-    return {
-        "message": f"Started discovery for {len(countries)} countries",
-        "task_ids": [t.id for t in tasks],
-        "queue_size": task_manager.get_queue_size()
-    }
+# Rotas antigas removidas - agora tudo é feito via orquestração unificada
 
 @router.get("/tasks/{task_id}")
 async def get_task_status(task_id: int, db: Session = Depends(get_db)):
@@ -118,77 +60,97 @@ async def get_queue_status():
         "message": "Task queue operational" if task_manager.is_worker_running() else "Task queue stopped"
     }
 
-@router.post("/validate/{startup_id}")
-async def validate_startup(startup_id: int, db: Session = Depends(get_db)):
-    """Valida as informações de uma startup específica"""
-    startup = db.query(models.Startup).filter(models.Startup.id == startup_id).first()
-    if not startup:
-        raise HTTPException(status_code=404, detail="Startup not found")
-
-    # Converte startup para dict
-    startup_data = {
-        "name": startup.name,
-        "website": str(startup.website) if startup.website else None,
-        "sector": startup.sector,
-        "founded_year": startup.founded_year,
-        "country": startup.country,
-        "city": startup.city,
-        "description": startup.description,
-        "ai_technologies": startup.ai_technologies,
-        "last_funding_amount": startup.last_funding_amount,
-        "investor_names": startup.investor_names,
-        "ceo_name": startup.ceo_name,
-        "ceo_linkedin": startup.ceo_linkedin,
-        "cto_name": startup.cto_name,
-        "cto_linkedin": startup.cto_linkedin,
-        "has_venture_capital": startup.has_venture_capital
-    }
-
-    validator = StartupValidationAgent()
-    validation_result = validator.validate_startup_info(startup_data)
-
-    return {
-        "startup_id": startup_id,
-        "startup_name": startup.name,
-        "validation": validation_result
-    }
-
-@router.post("/validate-batch")
-async def validate_batch_startups(
-    limit: int = 10,
+@router.get("/metrics/ranking")
+async def get_startup_ranking(
+    limit: int = 20,
     db: Session = Depends(get_db)
 ):
-    """Valida um lote de startups"""
-    startups = db.query(models.Startup).limit(limit).all()
+    """Retorna ranking de startups ordenadas por score total"""
 
-    if not startups:
-        raise HTTPException(status_code=404, detail="No startups found")
+    # Query para buscar startups com métricas ordenadas por total_score
+    startups_with_metrics = db.query(models.Startup, models.StartupMetrics)\
+        .join(models.StartupMetrics, models.Startup.id == models.StartupMetrics.startup_id)\
+        .order_by(models.StartupMetrics.total_score.desc())\
+        .limit(limit)\
+        .all()
 
-    startups_data = []
-    for startup in startups:
-        startup_data = {
+    ranking = []
+    for startup, metrics in startups_with_metrics:
+        ranking.append({
+            "rank": len(ranking) + 1,
+            "startup": {
+                "id": startup.id,
+                "name": startup.name,
+                "website": startup.website,
+                "sector": startup.sector,
+                "ceo_name": startup.ceo_name,
+                "cto_name": startup.cto_name,
+                "last_funding_amount": startup.last_funding_amount
+            },
+            "metrics": {
+                "market_demand_score": metrics.market_demand_score,
+                "technical_level_score": metrics.technical_level_score,
+                "partnership_potential_score": metrics.partnership_potential_score,
+                "total_score": metrics.total_score,
+                "analysis_date": metrics.analysis_date
+            }
+        })
+
+    return {
+        "ranking": ranking,
+        "total_analyzed": len(ranking),
+        "highest_score": ranking[0]["metrics"]["total_score"] if ranking else 0,
+        "lowest_score": ranking[-1]["metrics"]["total_score"] if ranking else 0
+    }
+
+@router.get("/invalid/analysis")
+async def get_invalid_startups_analysis(
+    limit: int = 20,
+    recommendation: str = None,
+    db: Session = Depends(get_db)
+):
+    """Retorna análise detalhada de startups inválidas para investigação"""
+
+    query = db.query(models.InvalidStartup)
+
+    if recommendation:
+        query = query.filter(models.InvalidStartup.recommendation == recommendation)
+
+    invalid_startups = query.order_by(models.InvalidStartup.created_at.desc()).limit(limit).all()
+
+    analysis = []
+    for startup in invalid_startups:
+        analysis.append({
             "id": startup.id,
             "name": startup.name,
-            "website": str(startup.website) if startup.website else None,
+            "website": startup.website,
             "sector": startup.sector,
-            "founded_year": startup.founded_year,
-            "country": startup.country,
-            "city": startup.city,
-            "description": startup.description,
-            "ai_technologies": startup.ai_technologies,
-            "last_funding_amount": startup.last_funding_amount,
-            "investor_names": startup.investor_names,
             "ceo_name": startup.ceo_name,
-            "ceo_linkedin": startup.ceo_linkedin,
             "cto_name": startup.cto_name,
+            "ceo_linkedin": startup.ceo_linkedin,
             "cto_linkedin": startup.cto_linkedin,
-            "has_venture_capital": startup.has_venture_capital
+            "reason": startup.reason,
+            "validation_issues": startup.validation_issues,
+            "validation_insight": startup.validation_insight,
+            "confidence_level": startup.confidence_level,
+            "recommendation": startup.recommendation,
+            "full_validation_data": startup.full_validation_data,
+            "created_at": startup.created_at
+        })
+
+    # Estatísticas agregadas
+    total_invalid = db.query(models.InvalidStartup).count()
+    by_recommendation = db.query(
+        models.InvalidStartup.recommendation,
+        func.count(models.InvalidStartup.id)
+    ).group_by(models.InvalidStartup.recommendation).all()
+
+    return {
+        "invalid_startups": analysis,
+        "total_invalid": total_invalid,
+        "showing": len(analysis),
+        "statistics": {
+            "by_recommendation": dict(by_recommendation),
+            "avg_confidence": db.query(func.avg(models.InvalidStartup.confidence_level)).scalar() or 0
         }
-        startups_data.append(startup_data)
-
-    validator = StartupValidationAgent()
-    validation_results = validator.batch_validate_startups(startups_data)
-
-    return validation_results
-
-# Task processing is now handled by TaskManager in services/task_manager.py
+    }

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from database import models
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 class AgentService:
@@ -120,3 +120,62 @@ class AgentService:
         self.db.add(analysis)
         self.db.commit()
         return analysis
+
+    def get_valid_startups_for_context(self, country: str, sector: str = None) -> List[Dict]:
+        """Busca startups válidas para contexto de exclusão"""
+        query = self.db.query(models.Startup).filter(models.Startup.country == country)
+
+        if sector:
+            query = query.filter(models.Startup.sector == sector)
+
+        startups = query.all()
+        return [{"name": s.name, "website": s.website} for s in startups]
+
+    def get_invalid_startups_for_context(self, country: str, sector: str = None) -> List[Dict]:
+        """Busca startups inválidas para contexto de exclusão"""
+        # Por enquanto retorna lista vazia, será implementado quando a tabela estiver criada
+        return []
+
+    def save_startup_metrics(self, startup_id: int, metrics_data: Dict) -> models.StartupMetrics:
+        """Salva métricas de uma startup"""
+
+        # Remove métricas antigas se existirem
+        self.db.query(models.StartupMetrics).filter(
+            models.StartupMetrics.startup_id == startup_id
+        ).delete()
+
+        metrics = models.StartupMetrics(
+            startup_id=startup_id,
+            market_demand_score=metrics_data.get("market_demand_score", 0),
+            technical_level_score=metrics_data.get("technical_level_score", 0),
+            partnership_potential_score=metrics_data.get("partnership_potential_score", 0),
+            total_score=metrics_data.get("total_score", 0)
+        )
+
+        self.db.add(metrics)
+        self.db.commit()
+        self.db.refresh(metrics)
+        return metrics
+
+    def save_invalid_startup(self, invalid_data: Dict) -> models.InvalidStartup:
+        """Salva startup inválida com insights detalhados"""
+        invalid_startup = models.InvalidStartup(
+            name=invalid_data.get("name"),
+            website=invalid_data.get("website"),
+            sector=invalid_data.get("sector"),
+            ceo_name=invalid_data.get("ceo_name"),
+            cto_name=invalid_data.get("cto_name"),
+            ceo_linkedin=invalid_data.get("ceo_linkedin"),
+            cto_linkedin=invalid_data.get("cto_linkedin"),
+            reason=invalid_data.get("reason"),
+            validation_issues=invalid_data.get("issues", []),
+            validation_insight=invalid_data.get("validation_insight"),
+            confidence_level=invalid_data.get("confidence_level", 0.0),
+            recommendation=invalid_data.get("recommendation"),
+            full_validation_data=invalid_data.get("full_validation_data", {})
+        )
+
+        self.db.add(invalid_startup)
+        self.db.commit()
+        self.db.refresh(invalid_startup)
+        return invalid_startup

@@ -31,6 +31,16 @@ services:
     networks:
       - nvidia_network
 
+  adminer:
+    image: adminer
+    container_name: nvidia_adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - nvidia_network
+
 volumes:
   postgres_data:
 

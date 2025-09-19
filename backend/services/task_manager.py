@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from database.connection import get_db
 from services.agent_service import AgentService
-from agents.direct_openai import DirectOpenAIAgent
+from agents.orchestrator import StartupOrchestrator
 
 class TaskManager:
     _instance = None
@@ -90,9 +90,9 @@ class TaskManager:
 # Singleton instance
 task_manager = TaskManager()
 
-# Função para executar discovery de forma assíncrona
-def process_discovery_task(task_id: int, country: str, sector: str):
-    """Processa uma task de discovery"""
+# Função para executar orquestração completa
+def process_orchestration_task(task_id: int, country: str, sector: str, limit: int = 5):
+    """Processa uma task de orquestração completa (Discovery → Validation → Metrics)"""
 
     # Get database session
     db = next(get_db())
@@ -101,30 +101,61 @@ def process_discovery_task(task_id: int, country: str, sector: str):
     try:
         # Update task to running
         service.update_task(task_id, "running")
-        print(f"🚀 Iniciando discovery para {country} - {sector or 'todos setores'}")
+        print(f"🚀 Iniciando orquestração para {country} - {sector or 'todos setores'} - Limit: {limit}")
 
-        # Create agent and run discovery
-        agent = DirectOpenAIAgent()
-        result = agent.discover_startups(country, sector)
+        # Buscar startups já processadas para contexto
+        existing_valid = service.get_valid_startups_for_context(country, sector)
+        existing_invalid = service.get_invalid_startups_for_context(country, sector)
+
+        # Create orchestrator and run full pipeline
+        orchestrator = StartupOrchestrator()
+        result = orchestrator.run_orchestration(
+            country=country,
+            sector=sector,
+            limit=limit,
+            existing_valid=existing_valid,
+            existing_invalid=existing_invalid
+        )
 
         # Save results
         service.update_task(task_id, "completed", result)
-        print(f"📊 Discovery concluída: {result.get('count', 0)} startups")
+        print(f"📊 Orquestração concluída: {result.get('status')}")
 
-        # Process and save startups
-        if result.get("status") == "success" and "startups" in result:
-            saved_count = 0
-            for startup_data in result["startups"]:
+        if result.get("status") == "success":
+            # Salvar startups válidas
+            valid_count = 0
+            invalid_count = 0
+            metrics_count = 0
+
+            for startup_metrics in result.get("results", {}).get("startup_metrics", []):
+                startup_data = startup_metrics["startup"]
+                metrics_data = startup_metrics["metrics"]
+
                 try:
-                    service.save_startup_from_discovery(startup_data)
-                    saved_count += 1
+                    # Salvar startup
+                    saved_startup = service.save_startup_from_discovery(startup_data)
+                    valid_count += 1
+
+                    # Salvar métricas
+                    service.save_startup_metrics(saved_startup.id, metrics_data)
+                    metrics_count += 1
+
                 except Exception as e:
                     print(f"⚠️  Erro ao salvar startup {startup_data.get('name')}: {e}")
 
-            print(f"💾 {saved_count} startups salvas no banco")
+            # Salvar startups inválidas com insights detalhados
+            for invalid_startup in result.get("results", {}).get("invalid_startups", []):
+                try:
+                    service.save_invalid_startup(invalid_startup)
+                except Exception as e:
+                    print(f"⚠️  Erro ao salvar startup inválida {invalid_startup.get('name')}: {e}")
+
+            print(f"💾 {valid_count} startups válidas salvas")
+            print(f"📊 {metrics_count} métricas calculadas")
+            print(f"❌ {result.get('results', {}).get('invalid_count', 0)} startups inválidas")
 
     except Exception as e:
-        error_msg = f"Erro na discovery: {str(e)}"
+        error_msg = f"Erro na orquestração: {str(e)}"
         print(f"❌ {error_msg}")
         service.update_task(task_id, "failed", error_message=error_msg)
     finally:
