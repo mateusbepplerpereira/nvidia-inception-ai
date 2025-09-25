@@ -79,6 +79,7 @@ class StartupValidationAgent:
         Nome: {startup_data.get('name')}
         Website: {startup_data.get('website')} (acessível: {'Sim' if website_valid else 'Não'})
         Setor: {startup_data.get('sector')}
+        Tecnologias IA: {startup_data.get('ai_technologies', [])} (DEVE ser em inglês)
         Funding: ${startup_data.get('last_funding_amount', 0):,}
         Investidores: {startup_data.get('investor_names')}
         Fontes: {startup_data.get('sources', {})}
@@ -87,9 +88,17 @@ class StartupValidationAgent:
 
         CRITÉRIOS DE VALIDAÇÃO:
         1. Website técnicamente válido: {'✓' if website_valid else '✗'}
-        2. Consistência dos dados com busca web
-        3. Funding realista para o setor
-        4. Investidores conhecidos
+        2. Tecnologias IA APENAS em inglês e específicas (não mercados ou análises genéricas)
+        3. Setor consistente (sem generalizações ou hallucinations)
+        4. Consistência dos dados com busca web
+        5. Funding realista para o setor
+        6. Investidores conhecidos
+
+        INVALIDAR SE:
+        - Tecnologias em português ("Visão Computacional", "Processamento de Linguagem Natural")
+        - Tecnologias genéricas como "análise de dados financeiros", "análise de crédito"
+        - Setor inconsistente com requisição original
+        - Tecnologias que são na verdade mercados/aplicações, não tecnologias
 
         RETORNE JSON:
         {{
@@ -100,6 +109,8 @@ class StartupValidationAgent:
             "funding_verified": true/false,
             "company_active": true/false,
             "web_search_used": {str(bool(web_validation_data)).lower()},
+            "technology_validation": "valid/invalid",
+            "sector_validation": "valid/invalid",
             "recommendations": ["ações sugeridas"]
         }}
         """

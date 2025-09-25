@@ -87,10 +87,24 @@ class StartupOrchestrator:
             invalid_names = [s["name"] for s in state["invalid_startups"]]
             exclusion_context += f"\nNÃO incluir estas startups inválidas: {invalid_names}"
 
-        # Query para busca web
-        search_query = f"AI startups {state['country']} venture capital funding 2024"
+        # Query para busca web - ESPECÍFICA por setor se fornecido
         if state.get('sector'):
-            search_query += f" {state['sector']}"
+            search_query = f"AI startups {state['sector']} {state['country']} venture capital funding 2024"
+        else:
+            search_query = f"AI startups {state['country']} venture capital funding 2024"
+
+        # Definir restrições de setor se especificado
+        sector_constraint = ""
+        if state.get('sector'):
+            sector_constraint = f"""
+        RESTRIÇÃO OBRIGATÓRIA DE SETOR:
+        - APENAS startups do setor "{state['sector']}"
+        - NÃO incluir startups de outros setores
+        - Se for "fintech", APENAS fintechs
+        - Se for "healthtech", APENAS healthtechs
+        - Se for "agtech", APENAS agtechs
+        - REJEITAR qualquer startup fora do setor especificado
+        """
 
         # Prompt otimizado para usar WebSearch
         prompt = f"""
@@ -104,6 +118,7 @@ class StartupOrchestrator:
         3. BASES DE DADOS: pitchbook.com, angellist.com
         4. Apenas se não encontrar suficientes, use outras fontes
 
+        {sector_constraint}
         {exclusion_context}
 
         OBRIGATÓRIO - WEBSITE OFICIAL CORRETO:
@@ -120,13 +135,18 @@ class StartupOrchestrator:
         3. Funding verificado em fontes CONFIÁVEIS (Neofeed, BrasilJourney, etc.)
         4. Tecnologias AI específicas e detalhadas
 
+        OBRIGATÓRIO - TECNOLOGIAS EM INGLÊS:
+        - ai_technologies SEMPRE em inglês: ["Computer Vision", "Natural Language Processing", "Machine Learning"]
+        - NÃO usar português: "Visão Computacional", "Processamento de Linguagem Natural"
+        - Tecnologias específicas, não mercados: "Computer Vision" não "análise de dados financeiros"
+
         RETORNE JSON:
         [
           {{
             "name": "Nome Exato da Startup",
             "website": "https://site-oficial-confirmado-na-busca.com.br",
-            "sector": "Setor específico",
-            "ai_technologies": ["Computer Vision", "NLP"],
+            "sector": "{state.get('sector', 'AI/Technology')}",
+            "ai_technologies": ["Computer Vision", "Natural Language Processing"],
             "founded_year": 2021,
             "last_funding_amount": 5000000,
             "investor_names": ["Nome do Investidor"],
@@ -680,21 +700,22 @@ class StartupOrchestrator:
         País: {startup.get('country')}
         Cidade: {startup.get('city')}
 
-        CRITÉRIOS DE ANÁLISE:
+        CRITÉRIOS DE ANÁLISE (baseado nas tecnologias ESPECÍFICAS da startup):
         1. MARKET_DEMAND (0-100): Demanda do mercado
-           - Setor em alta crescimento (Computer Vision: 85-95, NLP: 80-90, etc.)
-           - Tecnologias relevantes para NVIDIA (GPU/AI intensive: adicional 20 pontos)
-           - Aplicação prática e real (B2B enterprise: +15 pontos)
+           - Baseado nas tecnologias IA ESPECÍFICAS: Computer Vision (85-95), NLP (80-90), Machine Learning (70-85)
+           - Tecnologias relevantes para NVIDIA GPU (Deep Learning, Computer Vision: +20 pontos)
+           - Aplicação prática no setor específico (B2B enterprise: +15 pontos)
+           - NÃO criar análises genéricas como "análise de dados financeiros"
 
         2. TECHNICAL_LEVEL (0-100): Nível técnico
-           - Tecnologias avançadas de IA (Deep Learning: 80-100, ML básico: 50-70)
-           - Complexidade técnica (Multi-modal AI: 90-100, Single model: 60-80)
-           - Complexidade da solução AI (adicional 20 pontos)
+           - Baseado nas tecnologias IA LISTADAS: Deep Learning (80-100), Machine Learning (60-80), Computer Vision (70-90)
+           - Complexidade técnica real: Multi-modal AI (90-100), Single technology (60-80)
+           - Avaliar apenas as tecnologias mencionadas na lista ai_technologies
 
         3. PARTNERSHIP_POTENTIAL (0-100): Potencial de parceria
            - Funding recente e significativo (>$10M: 80-100, $1-10M: 60-80, <$1M: 30-60)
-           - Investidores tier-1 (Sequoia, A16Z: adicional 20 pontos)
-           - Tração de mercado e clientes enterprise (+15 pontos)
+           - Investidores conhecidos (+20 pontos)
+           - Setor alinhado com NVIDIA (AI/GPU intensive: +15 pontos)
 
         RETORNE APENAS JSON válido (sem markdown):
         {{

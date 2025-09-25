@@ -19,3 +19,4 @@
 /tests/*.pyc
 /backend/__pycache__
 /backend/*.pyc
+/backend/agents/__pycache__
