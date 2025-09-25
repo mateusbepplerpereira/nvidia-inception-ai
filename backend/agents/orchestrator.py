@@ -98,19 +98,33 @@ class StartupOrchestrator:
 
         QUERY PARA BUSCAR: "{search_query}"
 
+        PRIORIDADE DE BUSCA (busque primeiro nessas fontes CONFIÁVEIS):
+        1. FONTES PRIMÁRIAS: neofeed.com.br, brasiljorney.com.br, startup.com.br, crunchbase.com, techcrunch.com
+        2. MÍDIA BRASILEIRA: valor.globo.com, exame.com, abstartups.com.br
+        3. BASES DE DADOS: pitchbook.com, angellist.com
+        4. Apenas se não encontrar suficientes, use outras fontes
+
         {exclusion_context}
 
-        Após a busca, analise os resultados e extraia APENAS startups reais com:
-        1. Nome confirmado
-        2. Website acessível
-        3. Funding verificado em fontes confiáveis
-        4. Tecnologias AI específicas
+        OBRIGATÓRIO - WEBSITE OFICIAL CORRETO:
+        - BUSQUE na web: "nome_startup site oficial" ou "nome_startup website"
+        - CONFIRME o domínio correto nas matérias e fontes confiáveis
+        - Exemplos reais: "Creditec" → site é "https://soucreditec.com.br" (não creditec.com.br)
+        - Exemplo: "Juvo" → site é "https://www.juvocredito.com.br" (não juvo.com.br)
+        - SEMPRE verifique múltiplas fontes para confirmar o domínio correto
+        - Se não encontrar o site oficial exato, NÃO INCLUA a startup
+
+        Após a busca web, extraia APENAS startups reais com:
+        1. Nome confirmado em fonte confiável
+        2. Website OFICIAL encontrado na busca (não inventado)
+        3. Funding verificado em fontes CONFIÁVEIS (Neofeed, BrasilJourney, etc.)
+        4. Tecnologias AI específicas e detalhadas
 
         RETORNE JSON:
         [
           {{
             "name": "Nome Exato da Startup",
-            "website": "https://site-oficial.com",
+            "website": "https://site-oficial-confirmado-na-busca.com.br",
             "sector": "Setor específico",
             "ai_technologies": ["Computer Vision", "NLP"],
             "founded_year": 2021,
@@ -301,17 +315,28 @@ class StartupOrchestrator:
         issues = []
         validated_sources = {}
 
-        # Fontes confiáveis conhecidas com weights
+        # Fontes confiáveis conhecidas com weights (hierarquia de confiabilidade)
         trusted_sources = {
-            # Bases de dados profissionais (peso alto)
-            "crunchbase": 25, "pitchbook": 25, "angellist": 20,
-            # Mídia especializada (peso médio-alto)
-            "techcrunch": 15, "venturebeat": 15, "valor econômico": 15,
-            "exame": 10, "forbes": 12, "bloomberg": 12,
-            # Organizações locais (peso médio)
-            "abstartups": 12, "distrito": 10, "startupi": 8,
-            # Sites oficiais (peso médio)
-            "site oficial": 10, "press release": 8, "linkedin company": 8
+            # Bases de dados profissionais (peso máximo)
+            "crunchbase": 30, "pitchbook": 30, "angellist": 25,
+
+            # Mídia especializada internacional (peso alto)
+            "techcrunch": 20, "venturebeat": 18, "bloomberg": 18, "forbes": 18,
+
+            # Mídia brasileira confiável (peso alto)
+            "neofeed": 25, "brasiljorney": 22, "startup.com.br": 20,
+            "valor econômico": 18, "exame": 15, "folha": 15, "estadão": 15,
+
+            # Organizações e hubs de startups brasileiros (peso médio-alto)
+            "abstartups": 15, "distrito": 15, "startupi": 12, "baguete": 12,
+            "startse": 12, "ecommercebrasil": 10, "tecmundo": 10,
+
+            # Fontes setoriais especializadas (peso médio)
+            "fintechbrasil": 12, "saúdebusiness": 10, "agtech": 10,
+
+            # Sites oficiais e comunicados (peso médio)
+            "site oficial": 12, "press release": 10, "linkedin company": 10,
+            "comunicado oficial": 12, "portal da transparência": 15
         }
 
         # Validar funding sources
@@ -388,6 +413,10 @@ class StartupOrchestrator:
 
         for startup in state.get("discovered_startups", []):
             validation_result = self._validate_startup_thoroughly(startup)
+
+            # Se website não é válido, marcar como "Não encontrado"
+            if not validation_result.get("website_valid", True):
+                startup["website"] = "Não encontrado"
 
             # SEMPRE salvar startup, mas marcar se é válida ou inválida
             startup["validation"] = validation_result
@@ -482,11 +511,15 @@ class StartupOrchestrator:
         # Calcular score total de validação
         total_validation_score = sum(validation_scores.values()) / len(validation_scores) if validation_scores else 0
 
-        # Determinar se é válida (critérios baseados em website e fontes)
-        is_valid = (
-            total_validation_score >= 50 and  # Score mínimo de 50%
-            website_valid  # Website deve estar válido
+        # Determinar se é válida (não invalidar apenas por website inacessível)
+        # Startup é válida se tem dados básicos consistentes
+        has_basic_data = (
+            startup.get("name") and
+            startup.get("sector") and
+            startup.get("ai_technologies")
         )
+
+        is_valid = has_basic_data  # Website inacessível não invalida a startup
 
         return {
             "is_valid": is_valid,
@@ -500,6 +533,14 @@ class StartupOrchestrator:
 
     def _generate_validation_insight(self, startup: Dict[str, Any], validation_result: Dict[str, Any]) -> Dict[str, Any]:
         """Gera insight detalhado sobre porque a startup foi invalidada"""
+
+        # Otimização: Para casos simples de website inválido, usar insight padrão sem API
+        issues = validation_result.get("issues", [])
+        if len(issues) == 1 and any("Website" in issue or "website" in issue for issue in issues):
+            logger.info(f"Usando insight padrão para {startup.get('name')} - problema simples de website")
+            return self._default_validation_insight(validation_result)
+
+        # Para casos mais complexos, usar IA
         prompt = f"""
         Analise porque esta startup foi marcada como INVÁLIDA e forneça insights acionáveis:
 
@@ -534,28 +575,51 @@ class StartupOrchestrator:
         try:
             result = self._make_openai_request(prompt, max_tokens=800)
             if "error" in result:
+                logger.warning(f"API error no insight de validação: {result['error']}")
                 return self._default_validation_insight(validation_result)
 
-            insight_data = json.loads(result["content"].strip())
+            content = result.get("content", "").strip()
+            if not content:
+                logger.warning("Conteúdo vazio recebido para insight de validação")
+                return self._default_validation_insight(validation_result)
+
+            # Limpar markdown se presente
+            if content.startswith("```json"):
+                content = content.replace("```json", "").replace("```", "").strip()
+            elif content.startswith("```"):
+                content = content.replace("```", "", 1).replace("```", "").strip()
+
+            if not content:
+                logger.warning("Conteúdo vazio após limpeza de markdown")
+                return self._default_validation_insight(validation_result)
+
+            insight_data = json.loads(content)
             insight_data["tokens_used"] = result.get("tokens_used", 0)
             return insight_data
 
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parsing falhou no insight de validação: {e}")
+            logger.warning(f"Content recebido: '{content if 'content' in locals() else 'CONTENT_NAO_DEFINIDO'}'")
+            return self._default_validation_insight(validation_result)
         except Exception as e:
-            logger.error(f"Erro ao gerar insight de validação: {e}")
+            logger.warning(f"Não foi possível gerar insight de validação: {e}")
             return self._default_validation_insight(validation_result)
 
     def _default_validation_insight(self, validation_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Insight padrão quando a IA falha"""
+        """Insight padrão quando não é possível gerar insight detalhado"""
+        issues = validation_result.get("issues", [])
+        reason = validation_result.get('reason', 'Problemas de validação')
+
         return {
-            "insight": f"Startup invalidada devido a: {validation_result.get('reason', 'Problemas de validação')}",
+            "insight": f"Não encontrado - Startup invalidada devido a: {reason}",
             "confidence": 0.5,
-            "main_issues": validation_result.get("issues", ["Validação falharam"]),
+            "main_issues": issues if issues else ["Problemas de validação não especificados"],
             "potential_fixes": ["Verificar dados manualmente", "Validar fontes de informação"],
             "recommendation": "MANUAL_REVIEW",
             "analysis": {
-                "website_analysis": "Website não acessível ou URL incorreta",
-                "funding_analysis": "Fontes de funding não verificadas",
-                "data_quality": "Dados podem conter URLs incorretas ou informações desatualizadas"
+                "website_analysis": "Não encontrado - Website pode não estar acessível",
+                "funding_analysis": "Não encontrado - Fontes de funding não verificadas",
+                "data_quality": "Não encontrado - Análise detalhada indisponível"
             },
             "tokens_used": 0
         }

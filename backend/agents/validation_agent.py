@@ -20,7 +20,7 @@ class StartupValidationAgent:
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini-search-preview")
 
     def _perform_targeted_web_validation(self, startup_name: str, country: str, website_works: bool) -> Dict[str, Any]:
-        """Validação técnica focada sem dependência de WebSearch"""
+        """Validação técnica simples baseada no website fornecido pelo discovery"""
 
         logger.info(f"Executando validação técnica para {startup_name}")
 
@@ -40,38 +40,11 @@ class StartupValidationAgent:
             validation_data["website_found"] = "confirmed_working"
             logger.info(f"Website de {startup_name} está funcionando")
         else:
-            # Tentar encontrar website alternativo
-            logger.info(f"Tentando encontrar website alternativo para {startup_name}")
-            potential_sites = self._generate_potential_websites(startup_name)
-            for site in potential_sites:
-                if self.check_website_validity(site):
-                    validation_data["website_found"] = site
-                    validation_data["company_status"] = "active"
-                    logger.info(f"Website alternativo encontrado para {startup_name}: {site}")
-                    break
-
-            if not validation_data["website_found"]:
-                logger.warning(f"Nenhum website válido encontrado para {startup_name}")
+            logger.warning(f"Website fornecido para {startup_name} não está funcionando")
+            validation_data["company_status"] = "inactive_website"
 
         return validation_data
 
-    def _generate_potential_websites(self, startup_name: str) -> List[str]:
-        """Gera URLs potenciais para teste"""
-        clean_name = startup_name.lower().replace(" ", "").replace(".", "")
-        hyphen_name = startup_name.lower().replace(" ", "-").replace(".", "")
-
-        domains = [".com", ".com.br", ".ai", ".io", ".tech"]
-
-        potential_sites = []
-        for domain in domains:
-            potential_sites.extend([
-                f"https://{clean_name}{domain}",
-                f"https://{hyphen_name}{domain}",
-                f"https://www.{clean_name}{domain}",
-                f"https://www.{hyphen_name}{domain}"
-            ])
-
-        return potential_sites[:8]  # Limitar a 8 tentativas
 
 
 
@@ -162,12 +135,6 @@ class StartupValidationAgent:
 
                 validation_result = json.loads(content)
                 validation_result["tokens_used"] = result["usage"]["total_tokens"]
-
-                # Adicionar dados das buscas
-                validation_result["web_search_results"] = {
-                    "website": website_search,
-                    "funding": funding_search
-                }
 
                 return validation_result
 

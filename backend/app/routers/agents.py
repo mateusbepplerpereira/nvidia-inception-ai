@@ -83,8 +83,6 @@ async def get_startup_ranking(
                 "name": startup.name,
                 "website": startup.website,
                 "sector": startup.sector,
-                "ceo_name": startup.ceo_name,
-                "cto_name": startup.cto_name,
                 "last_funding_amount": startup.last_funding_amount
             },
             "metrics": {
@@ -125,10 +123,6 @@ async def get_invalid_startups_analysis(
             "name": startup.name,
             "website": startup.website,
             "sector": startup.sector,
-            "ceo_name": startup.ceo_name,
-            "cto_name": startup.cto_name,
-            "ceo_linkedin": startup.ceo_linkedin,
-            "cto_linkedin": startup.cto_linkedin,
             "reason": startup.reason,
             "validation_issues": startup.validation_issues,
             "validation_insight": startup.validation_insight,
