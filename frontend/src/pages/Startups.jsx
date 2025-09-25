@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { startupService } from '../services/api';
+import { startupService, agentService } from '../services/api';
 import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 function Startups() {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ function Startups() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
+    search: '',
     sector: '',
     technology: '',
     country: '',
@@ -16,6 +18,7 @@ function Startups() {
     sortBy: 'created_at',
     sortOrder: 'desc'
   });
+  const [metricsData, setMetricsData] = useState({});
   const [availableFilters, setAvailableFilters] = useState({
     sectors: [],
     technologies: [],
@@ -26,6 +29,7 @@ function Startups() {
 
   useEffect(() => {
     loadStartups();
+    loadMetrics();
   }, []);
 
   const loadStartups = async () => {
@@ -51,8 +55,22 @@ function Startups() {
     }
   };
 
+  const loadMetrics = async () => {
+    try {
+      const rankingData = await agentService.getMetricsRanking();
+      const metrics = {};
+      rankingData.ranking.forEach(item => {
+        metrics[item.startup.id] = item.metrics;
+      });
+      setMetricsData(metrics);
+    } catch (error) {
+      console.error('Error loading metrics:', error);
+    }
+  };
+
   // Filter and sort startups
   const filteredStartups = startups.filter(startup => {
+    if (filters.search && !startup.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
     if (filters.sector && startup.sector !== filters.sector) return false;
     if (filters.technology && !startup.ai_technologies?.includes(filters.technology)) return false;
     if (filters.country && startup.country !== filters.country) return false;
@@ -68,9 +86,13 @@ function Startups() {
       case 'created_at':
         return order * (new Date(b.created_at) - new Date(a.created_at));
       case 'score':
-        const scoreA = a.analysis?.[0]?.priority_score || 0;
-        const scoreB = b.analysis?.[0]?.priority_score || 0;
+        const scoreA = metricsData[a.id]?.total_score || a.analysis?.[0]?.priority_score || 0;
+        const scoreB = metricsData[b.id]?.total_score || b.analysis?.[0]?.priority_score || 0;
         return order * (scoreB - scoreA);
+      case 'partnership':
+        const partnershipA = metricsData[a.id]?.partnership_potential_score || 0;
+        const partnershipB = metricsData[b.id]?.partnership_potential_score || 0;
+        return order * (partnershipB - partnershipA);
       default:
         return 0;
     }
@@ -88,6 +110,7 @@ function Startups() {
 
   const resetFilters = () => {
     setFilters({
+      search: '',
       sector: '',
       technology: '',
       country: '',
@@ -101,7 +124,7 @@ function Startups() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-nvidia-green text-2xl">Loading startups...</div>
+        <div className="text-nvidia-green text-2xl">Carregando startups...</div>
       </div>
     );
   }
@@ -113,90 +136,126 @@ function Startups() {
         <div className="flex items-center space-x-4">
           <span className="text-gray-400">Total: {filteredStartups.length} startups</span>
           <button
-            onClick={loadStartups}
+            onClick={() => { loadStartups(); loadMetrics(); }}
             className="bg-nvidia-green text-nvidia-dark px-4 py-2 rounded-md hover:bg-green-600 transition-colors flex items-center space-x-2"
           >
             <ion-icon name="refresh-outline"></ion-icon>
-            <span>Refresh</span>
+            <span>Atualizar</span>
           </button>
+        </div>
+      </div>
+
+      {/* Search Bar */}
+      <div className="bg-nvidia-gray rounded-lg p-4">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Pesquisar por nome da startup..."
+            value={filters.search}
+            onChange={(e) => handleFilterChange('search', e.target.value)}
+            className="w-full bg-nvidia-lightGray text-white rounded-md px-4 py-3 pl-10 focus:outline-none focus:ring-2 focus:ring-nvidia-green"
+          />
+          <ion-icon
+            name="search-outline"
+            class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xl"
+          ></ion-icon>
         </div>
       </div>
 
       {/* Filters */}
       <div className="bg-nvidia-gray rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Filters</h2>
+          <h2 className="text-lg font-semibold text-white">Filtros</h2>
           <button
             onClick={resetFilters}
             className="text-nvidia-green hover:text-green-400 text-sm"
           >
-            Reset Filters
+            Limpar Filtros
           </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <select
-            value={filters.sector}
-            onChange={(e) => handleFilterChange('sector', e.target.value)}
-            className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green"
-          >
-            <option value="">All Sectors</option>
-            {availableFilters.sectors.map(sector => (
-              <option key={sector} value={sector}>{sector}</option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Setor</label>
+            <select
+              value={filters.sector}
+              onChange={(e) => handleFilterChange('sector', e.target.value)}
+              className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green w-full"
+            >
+              <option value="">Todos os Setores</option>
+              {availableFilters.sectors.map(sector => (
+                <option key={sector} value={sector}>{sector}</option>
+              ))}
+            </select>
+          </div>
 
-          <select
-            value={filters.technology}
-            onChange={(e) => handleFilterChange('technology', e.target.value)}
-            className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green"
-          >
-            <option value="">All Technologies</option>
-            {availableFilters.technologies.map(tech => (
-              <option key={tech} value={tech}>{tech}</option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Tecnologia</label>
+            <select
+              value={filters.technology}
+              onChange={(e) => handleFilterChange('technology', e.target.value)}
+              className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green w-full"
+            >
+              <option value="">Todas as Tecnologias</option>
+              {availableFilters.technologies.map(tech => (
+                <option key={tech} value={tech}>{tech}</option>
+              ))}
+            </select>
+          </div>
 
-          <select
-            value={filters.country}
-            onChange={(e) => handleFilterChange('country', e.target.value)}
-            className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green"
-          >
-            <option value="">All Countries</option>
-            {availableFilters.countries.map(country => (
-              <option key={country} value={country}>{country}</option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">País</label>
+            <select
+              value={filters.country}
+              onChange={(e) => handleFilterChange('country', e.target.value)}
+              className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green w-full"
+            >
+              <option value="">Todos os Países</option>
+              {availableFilters.countries.map(country => (
+                <option key={country} value={country}>{country}</option>
+              ))}
+            </select>
+          </div>
 
-          <select
-            value={filters.hasVC}
-            onChange={(e) => handleFilterChange('hasVC', e.target.value)}
-            className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green"
-          >
-            <option value="">VC Status</option>
-            <option value="true">With VC</option>
-            <option value="false">No VC</option>
-          </select>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Status VC</label>
+            <select
+              value={filters.hasVC}
+              onChange={(e) => handleFilterChange('hasVC', e.target.value)}
+              className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green w-full"
+            >
+              <option value="">Todos</option>
+              <option value="true">Com VC</option>
+              <option value="false">Sem VC</option>
+            </select>
+          </div>
 
-          <select
-            value={filters.sortBy}
-            onChange={(e) => handleFilterChange('sortBy', e.target.value)}
-            className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green"
-          >
-            <option value="created_at">Date Added</option>
-            <option value="name">Name</option>
-            <option value="sector">Sector</option>
-            <option value="score">Priority Score</option>
-          </select>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Ordenar por</label>
+            <select
+              value={filters.sortBy}
+              onChange={(e) => handleFilterChange('sortBy', e.target.value)}
+              className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green w-full"
+            >
+              <option value="created_at">Data de Adição</option>
+              <option value="name">Nome</option>
+              <option value="sector">Setor</option>
+              <option value="score">Score Total</option>
+              <option value="partnership">Potencial de Parceria</option>
+            </select>
+          </div>
 
-          <select
-            value={filters.sortOrder}
-            onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
-            className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green"
-          >
-            <option value="desc">Descending</option>
-            <option value="asc">Ascending</option>
-          </select>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Ordem</label>
+            <select
+              value={filters.sortOrder}
+              onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
+              className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green w-full"
+            >
+              <option value="desc">Decrescente</option>
+              <option value="asc">Crescente</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -209,25 +268,25 @@ function Startups() {
                 Startup
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Sector
+                Setor
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Technologies
+                Tecnologias
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Country
+                País
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                VC Funding
+                Investimento VC
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                 Score
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Added
+                Adicionada
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Actions
+                Ações
               </th>
             </tr>
           </thead>
@@ -274,7 +333,11 @@ function Startups() {
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  {startup.analysis?.[0]?.priority_score ? (
+                  {metricsData[startup.id]?.total_score ? (
+                    <span className="text-nvidia-green font-semibold">
+                      {metricsData[startup.id].total_score.toFixed(1)}
+                    </span>
+                  ) : startup.analysis?.[0]?.priority_score ? (
                     <span className="text-nvidia-green font-semibold">
                       {startup.analysis[0].priority_score.toFixed(1)}
                     </span>
@@ -283,7 +346,7 @@ function Startups() {
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-gray-400 text-sm">
-                  {format(new Date(startup.created_at), 'MMM dd, yyyy')}
+                  {format(new Date(startup.created_at), 'dd MMM yyyy', { locale: ptBR })}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <button
@@ -303,7 +366,7 @@ function Startups() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <div className="text-gray-400">
-            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredStartups.length)} of {filteredStartups.length} results
+            Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredStartups.length)} de {filteredStartups.length} resultados
           </div>
           <div className="flex items-center space-x-2">
             <button

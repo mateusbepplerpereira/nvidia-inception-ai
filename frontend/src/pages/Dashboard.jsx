@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { startupService, agentService } from '../services/api';
 
 function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalStartups: 0,
     topStartup: null,
@@ -269,7 +271,11 @@ function Dashboard() {
           <h2 className="text-xl font-semibold text-white mb-4">Top Startups com Maior Potencial</h2>
           <div className="space-y-3">
             {stats.topStartups.length > 0 ? stats.topStartups.map((startup) => (
-              <div key={startup.id} className="flex items-center justify-between p-4 bg-nvidia-lightGray rounded-lg">
+              <div
+                key={startup.id}
+                className="flex items-center justify-between p-4 bg-nvidia-lightGray rounded-lg cursor-pointer hover:bg-nvidia-gray transition-colors"
+                onClick={() => navigate(`/startups/${startup.id}`)}
+              >
                 <div className="flex items-center space-x-4">
                   <span className="text-nvidia-green font-bold text-2xl">#{startup.rank}</span>
                   <div className="flex-1">
