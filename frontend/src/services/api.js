@@ -53,6 +53,11 @@ export const agentService = {
     const response = await api.post('/agents/discover', params);
     return response.data;
   },
+
+  async getMetricsRanking() {
+    const response = await api.get('/agents/metrics/ranking');
+    return response.data;
+  },
 };
 
 export default api;

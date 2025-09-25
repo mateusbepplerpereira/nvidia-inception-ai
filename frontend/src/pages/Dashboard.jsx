@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { startupService } from '../services/api';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { startupService, agentService } from '../services/api';
 
 function Dashboard() {
   const [stats, setStats] = useState({
     totalStartups: 0,
-    withVenture: 0,
-    avgScore: 0,
-    topSectors: [],
+    topStartup: null,
+    mostUsedTech: 'N/A',
+    topSector: 'N/A',
     topTechnologies: [],
-    monthlyGrowth: [],
+    countryDistribution: [],
     sectorDistribution: [],
-    topStartups: []
+    topStartups: [],
+    highestScore: 0,
+    lowestScore: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -22,17 +24,19 @@ function Dashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const startups = await startupService.getStartups({ limit: 1000 });
+      // Get startups data and ranking in parallel
+      const [startups, rankingData] = await Promise.all([
+        startupService.getStartups({ limit: 1000 }),
+        agentService.getMetricsRanking()
+      ]);
 
       // Process data for dashboard
       const totalStartups = startups.length;
       const withVenture = startups.filter(s => s.has_venture_capital).length;
 
       // Calculate average scores
-      const startupsWithScores = startups.filter(s => s.analysis?.length > 0);
-      const avgScore = startupsWithScores.length > 0
-        ? startupsWithScores.reduce((acc, s) => acc + (s.analysis[0]?.priority_score || 0), 0) / startupsWithScores.length
-        : 0;
+      // Use ranking data for top startups
+      const rankedStartups = rankingData.ranking || [];
 
       // Get sector distribution
       const sectorCounts = {};
@@ -62,37 +66,53 @@ function Dashboard() {
         .sort((a, b) => b.count - a.count)
         .slice(0, 8);
 
-      // Get monthly growth (simulated)
-      const monthlyGrowth = [
-        { month: 'Jan', count: 12 },
-        { month: 'Feb', count: 18 },
-        { month: 'Mar', count: 25 },
-        { month: 'Apr', count: 32 },
-        { month: 'May', count: 45 },
-        { month: 'Jun', count: 58 }
-      ];
+      // Get country distribution
+      const countryCounts = {};
+      startups.forEach(s => {
+        if (s.country) {
+          countryCounts[s.country] = (countryCounts[s.country] || 0) + 1;
+        }
+      });
 
-      // Get top startups by score
-      const topStartups = startupsWithScores
-        .sort((a, b) => (b.analysis[0]?.priority_score || 0) - (a.analysis[0]?.priority_score || 0))
-        .slice(0, 5)
-        .map(s => ({
-          id: s.id,
-          name: s.name,
-          sector: s.sector,
-          score: s.analysis[0]?.priority_score || 0,
-          technologies: s.ai_technologies || []
-        }));
+      const countryDistribution = Object.entries(countryCounts)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 6);
+
+      // Get top 5 startups from ranking API
+      const topStartups = rankedStartups.slice(0, 5).map(item => ({
+        id: item.startup.id,
+        name: item.startup.name,
+        sector: item.startup.sector,
+        totalScore: item.metrics.total_score,
+        techScore: item.metrics.technical_level_score,
+        marketScore: item.metrics.market_demand_score,
+        partnershipScore: item.metrics.partnership_potential_score,
+        fundingAmount: item.startup.last_funding_amount || 0,
+        rank: item.rank
+      }));
+
+      // Get top startup from ranking
+      const topStartup = topStartups[0] || null;
+
+      // Get most used technology
+      const mostUsedTech = topTechnologies[0]?.name || 'N/A';
+
+      // Get top sector
+      const topSector = sectorDistribution[0]?.name || 'N/A';
 
       setStats({
         totalStartups,
-        withVenture,
-        avgScore: avgScore.toFixed(1),
-        topSectors: sectorDistribution,
+        topStartup,
+        mostUsedTech,
+        topSector,
         topTechnologies,
-        monthlyGrowth,
+        countryDistribution,
         sectorDistribution,
-        topStartups
+        topStartups,
+        highestScore: rankingData.highest_score || 0,
+        lowestScore: rankingData.lowest_score || 0,
+        totalAnalyzed: rankingData.total_analyzed || 0
       });
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -120,7 +140,7 @@ function Dashboard() {
           className="bg-nvidia-green text-nvidia-dark px-4 py-2 rounded-md hover:bg-green-600 transition-colors flex items-center space-x-2"
         >
           <ion-icon name="refresh-outline"></ion-icon>
-          <span>Refresh</span>
+          <span>Atualizar</span>
         </button>
       </div>
 
@@ -129,7 +149,7 @@ function Dashboard() {
         <div className="bg-nvidia-gray rounded-lg p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">Total Startups</p>
+              <p className="text-gray-400 text-sm">Total de Startups</p>
               <p className="text-3xl font-bold text-white mt-1">{stats.totalStartups}</p>
             </div>
             <ion-icon name="business" class="text-nvidia-green text-4xl"></ion-icon>
@@ -139,55 +159,64 @@ function Dashboard() {
         <div className="bg-nvidia-gray rounded-lg p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">With VC Funding</p>
-              <p className="text-3xl font-bold text-white mt-1">{stats.withVenture}</p>
+              <p className="text-gray-400 text-sm">Tecnologia Mais Usada</p>
+              <p className="text-2xl font-bold text-white mt-1">{stats.mostUsedTech}</p>
             </div>
-            <ion-icon name="cash-outline" class="text-nvidia-green text-4xl"></ion-icon>
+            <ion-icon name="code-slash-outline" class="text-nvidia-green text-4xl"></ion-icon>
           </div>
         </div>
 
         <div className="bg-nvidia-gray rounded-lg p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">Avg Priority Score</p>
-              <p className="text-3xl font-bold text-white mt-1">{stats.avgScore}</p>
+              <p className="text-gray-400 text-sm">Setor Principal</p>
+              <p className="text-2xl font-bold text-white mt-1">{stats.topSector}</p>
             </div>
-            <ion-icon name="trending-up-outline" class="text-nvidia-green text-4xl"></ion-icon>
+            <ion-icon name="business-outline" class="text-nvidia-green text-4xl"></ion-icon>
           </div>
         </div>
 
         <div className="bg-nvidia-gray rounded-lg p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-sm">Success Rate</p>
-              <p className="text-3xl font-bold text-white mt-1">
-                {stats.totalStartups > 0 ? ((stats.withVenture / stats.totalStartups) * 100).toFixed(0) : 0}%
-              </p>
+              <p className="text-gray-400 text-sm">Top Startup</p>
+              <p className="text-xl font-bold text-white mt-1">{stats.topStartup?.name || 'N/A'}</p>
+              <p className="text-nvidia-green text-lg font-semibold">Score: {stats.topStartup?.totalScore?.toFixed(1) || 0}</p>
             </div>
-            <ion-icon name="checkmark-circle-outline" class="text-nvidia-green text-4xl"></ion-icon>
+            <ion-icon name="trophy-outline" class="text-nvidia-green text-4xl"></ion-icon>
           </div>
         </div>
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Monthly Growth */}
+        {/* Country Distribution */}
         <div className="bg-nvidia-gray rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Monthly Growth</h2>
+          <h2 className="text-xl font-semibold text-white mb-4">Startups por País</h2>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={stats.monthlyGrowth}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#4A4A4A" />
-              <XAxis dataKey="month" stroke="#999" />
-              <YAxis stroke="#999" />
+            <PieChart>
+              <Pie
+                data={stats.countryDistribution}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {stats.countryDistribution.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
               <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', border: 'none' }} />
-              <Line type="monotone" dataKey="count" stroke="#76B900" strokeWidth={2} />
-            </LineChart>
+            </PieChart>
           </ResponsiveContainer>
         </div>
 
         {/* Sector Distribution */}
         <div className="bg-nvidia-gray rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Startups by Sector</h2>
+          <h2 className="text-xl font-semibold text-white mb-4">Startups por Setor</h2>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
@@ -209,39 +238,55 @@ function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Top Technologies */}
-        <div className="bg-nvidia-gray rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Most Used AI Technologies</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={stats.topTechnologies} layout="horizontal">
+        {/* Top Technologies - Full Width */}
+        <div className="bg-nvidia-gray rounded-lg p-6 md:col-span-2">
+          <h2 className="text-xl font-semibold text-white mb-4">Tecnologias de IA Mais Utilizadas</h2>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={stats.topTechnologies} margin={{ bottom: 120 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#4A4A4A" />
-              <XAxis type="number" stroke="#999" />
-              <YAxis dataKey="name" type="category" stroke="#999" width={100} />
+              <XAxis
+                dataKey="name"
+                stroke="#999"
+                angle={-45}
+                textAnchor="end"
+                interval={0}
+                height={100}
+                tick={{ fontSize: 12 }}
+              />
+              <YAxis stroke="#999" />
               <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', border: 'none' }} />
-              <Bar dataKey="count" fill="#76B900" />
+              <Bar dataKey="count" fill="#76B900">
+                {stats.topTechnologies.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Top Startups */}
-        <div className="bg-nvidia-gray rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">Top Startups with Highest Potential</h2>
+        {/* Top Startups with Metrics */}
+        <div className="bg-nvidia-gray rounded-lg p-6 md:col-span-2">
+          <h2 className="text-xl font-semibold text-white mb-4">Top Startups com Maior Potencial</h2>
           <div className="space-y-3">
-            {stats.topStartups.map((startup, index) => (
-              <div key={startup.id} className="flex items-center justify-between p-3 bg-nvidia-lightGray rounded-lg">
-                <div className="flex items-center space-x-3">
-                  <span className="text-nvidia-green font-bold text-lg">#{index + 1}</span>
-                  <div>
-                    <p className="text-white font-medium">{startup.name}</p>
-                    <p className="text-gray-400 text-sm">{startup.sector}</p>
+            {stats.topStartups.length > 0 ? stats.topStartups.map((startup) => (
+              <div key={startup.id} className="flex items-center justify-between p-4 bg-nvidia-lightGray rounded-lg">
+                <div className="flex items-center space-x-4">
+                  <span className="text-nvidia-green font-bold text-2xl">#{startup.rank}</span>
+                  <div className="flex-1">
+                    <p className="text-white font-semibold text-lg">{startup.name}</p>
+                    <p className="text-gray-400">{startup.sector}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-nvidia-green font-bold text-lg">{startup.score.toFixed(1)}</p>
-                  <p className="text-gray-400 text-sm">Score</p>
+                  <p className="text-nvidia-green font-bold text-2xl">{startup.totalScore?.toFixed(1) || 0}</p>
+                  <p className="text-gray-400 text-sm">Score Total</p>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-center py-8 text-gray-400">
+                <p>Nenhuma startup com métricas disponível</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
