@@ -24,6 +24,7 @@ class Startup(Base):
     ceo_linkedin = Column(String(500))
     cto_name = Column(String(255))
     cto_linkedin = Column(String(500))
+    sources = Column(JSON)  # {"funding": ["Crunchbase", "PitchBook"], "investors": ["AngelList"], "validation": ["company_website"]}
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

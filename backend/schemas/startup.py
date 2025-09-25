@@ -20,6 +20,7 @@ class StartupBase(BaseModel):
     ceo_linkedin: Optional[str] = None
     cto_name: Optional[str] = None
     cto_linkedin: Optional[str] = None
+    sources: Optional[Dict[str, Any]] = {}
 
 class StartupCreate(StartupBase):
     pass
@@ -42,6 +43,7 @@ class StartupUpdate(BaseModel):
     ceo_linkedin: Optional[str] = None
     cto_name: Optional[str] = None
     cto_linkedin: Optional[str] = None
+    sources: Optional[Dict[str, Any]] = None
 
 class LeadershipInfo(BaseModel):
     name: str

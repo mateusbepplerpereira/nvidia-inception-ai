@@ -48,6 +48,25 @@ class AgentService:
             (models.Startup.website == startup_data.get("website"))
         ).first()
 
+        # Preparar sources combinando dados existentes com validação
+        sources = startup_data.get("sources", {})
+
+        # Se há validação de sources, incluir metadata
+        if startup_data.get("source_validation"):
+            validation = startup_data["source_validation"]
+            sources["validation_metadata"] = {
+                "reliability_score": validation.get("reliability_score", 0),
+                "is_reliable": validation.get("is_reliable", False),
+                "funding_score": validation.get("funding_score", 0),
+                "investor_score": validation.get("investor_score", 0),
+                "validation_score": validation.get("validation_score", 0),
+                "validated_at": datetime.now().isoformat(),
+                "recommendation": validation.get("recommendation", "UNKNOWN")
+            }
+
+            if validation.get("issues"):
+                sources["validation_metadata"]["issues"] = validation["issues"]
+
         if existing:
             # Update existing startup with new data
             if startup_data.get("website"):
@@ -77,6 +96,9 @@ class AgentService:
             if startup_data.get("cto_linkedin"):
                 existing.cto_linkedin = startup_data.get("cto_linkedin")
 
+            # Sempre atualizar sources com validação
+            existing.sources = sources
+
             existing.has_venture_capital = bool(startup_data.get("investor_names"))
             existing.updated_at = datetime.now()
 
@@ -99,7 +121,8 @@ class AgentService:
                 ceo_name=startup_data.get("ceo_name"),
                 ceo_linkedin=startup_data.get("ceo_linkedin"),
                 cto_name=startup_data.get("cto_name"),
-                cto_linkedin=startup_data.get("cto_linkedin")
+                cto_linkedin=startup_data.get("cto_linkedin"),
+                sources=sources
             )
             self.db.add(startup)
             self.db.commit()
