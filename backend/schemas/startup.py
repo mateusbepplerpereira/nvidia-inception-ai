@@ -16,10 +16,6 @@ class StartupBase(BaseModel):
     total_funding: Optional[float] = None
     investor_names: Optional[List[str]] = []
     has_venture_capital: bool = False
-    ceo_name: Optional[str] = None
-    ceo_linkedin: Optional[str] = None
-    cto_name: Optional[str] = None
-    cto_linkedin: Optional[str] = None
     sources: Optional[Dict[str, Any]] = {}
 
 class StartupCreate(StartupBase):
@@ -39,10 +35,6 @@ class StartupUpdate(BaseModel):
     total_funding: Optional[float] = None
     investor_names: Optional[List[str]] = None
     has_venture_capital: Optional[bool] = None
-    ceo_name: Optional[str] = None
-    ceo_linkedin: Optional[str] = None
-    cto_name: Optional[str] = None
-    cto_linkedin: Optional[str] = None
     sources: Optional[Dict[str, Any]] = None
 
 class LeadershipInfo(BaseModel):

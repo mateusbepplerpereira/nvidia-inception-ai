@@ -4,7 +4,6 @@ from langgraph.prebuilt import ToolExecutor
 import requests
 import json
 import os
-from urllib.parse import urlparse
 from datetime import datetime
 import logging
 
@@ -42,7 +41,8 @@ class StartupOrchestrator:
             raise ValueError("OPENAI_API_KEY não encontrada")
 
         self.base_url = "https://api.openai.com/v1/chat/completions"
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        # Sempre usar modelo do env - deve ser gpt-4o-mini-search-preview para WebSearch
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini-search-preview")
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -73,122 +73,223 @@ class StartupOrchestrator:
         return workflow.compile()
 
     def _discovery_agent(self, state: OrchestrationState) -> OrchestrationState:
-        """Agente de descoberta com contexto de startups já processadas"""
+        """Agente de descoberta usando WebSearch nativo"""
+        logger.info("*** DISCOVERY AGENT CHAMADO ***")
         state["current_step"] = "discovery"
 
         # Criar contexto de exclusão
         exclusion_context = ""
         if state.get("valid_startups"):
             valid_names = [s["name"] for s in state["valid_startups"]]
-            exclusion_context += f"\nNÃO incluir estas startups válidas já encontradas: {valid_names}"
+            exclusion_context += f"\nNÃO incluir estas startups já encontradas: {valid_names}"
 
         if state.get("invalid_startups"):
             invalid_names = [s["name"] for s in state["invalid_startups"]]
             exclusion_context += f"\nNÃO incluir estas startups inválidas: {invalid_names}"
 
-        prompt = f"""Como especialista no ecossistema de startups da América Latina, liste EXATAMENTE {state['limit']} startups de IA em {state['country']} que receberam investimento de Venture Capital VERIFICÁVEL.
+        # Query para busca web
+        search_query = f"AI startups {state['country']} venture capital funding 2024"
+        if state.get('sector'):
+            search_query += f" {state['sector']}"
 
-{f'Setor específico: {state["sector"]}' if state.get("sector") else 'Todos os setores de IA'}
+        # Prompt otimizado para usar WebSearch
+        prompt = f"""
+        Use a ferramenta WebSearch para encontrar EXATAMENTE {state['limit']} startups de IA reais em {state['country']} que receberam funding de VC.
 
-{exclusion_context}
+        QUERY PARA BUSCAR: "{search_query}"
 
-CRITÉRIOS RIGOROSOS:
-- Retorne EXATAMENTE {state['limit']} startups, nem mais nem menos
-- APENAS startups reais com funding VERIFICÁVEL por fontes confiáveis
-- Busque startups DIFERENTES das já listadas no contexto
-- OBRIGATÓRIO: Inclua fontes confiáveis para funding e investidores
+        {exclusion_context}
 
-FONTES CONFIÁVEIS ACEITAS:
-- Crunchbase, PitchBook, AngelList
-- TechCrunch, VentureBeat, Valor Econômico
-- Sites oficiais das startups (seção de press releases)
-- Perfis oficiais de fundos de VC
-- ABStartups, Distrito, Startupi
+        Após a busca, analise os resultados e extraia APENAS startups reais com:
+        1. Nome confirmado
+        2. Website acessível
+        3. Funding verificado em fontes confiáveis
+        4. Tecnologias AI específicas
 
-Para cada startup, retorne APENAS um JSON válido com este formato:
-[
-  {{
-    "name": "Nome da Startup",
-    "website": "https://website.com",
-    "sector": "Setor específico",
-    "ai_technologies": ["Computer Vision", "NLP"],
-    "founded_year": 2020,
-    "last_funding_amount": 50000000,
-    "investor_names": ["Investidor 1", "Investidor 2"],
-    "ceo_name": "Nome do CEO",
-    "ceo_linkedin": "https://linkedin.com/in/ceo",
-    "cto_name": "Nome do CTO",
-    "cto_linkedin": "https://linkedin.com/in/cto",
-    "country": "{state['country']}",
-    "city": "Cidade principal",
-    "description": "Breve descrição da startup e sua solução de IA",
-    "has_venture_capital": true,
-    "sources": {{
-      "funding": ["Crunchbase", "Fonte específica"],
-      "investors": ["AngelList", "Site do fundo"],
-      "validation": ["Site oficial", "TechCrunch"]
-    }}
-  }}
-]
-
-IMPORTANTE: Só inclua startups onde você pode identificar fontes confiáveis para o funding.
-Retorne apenas o array JSON, sem texto adicional."""
+        RETORNE JSON:
+        [
+          {{
+            "name": "Nome Exato da Startup",
+            "website": "https://site-oficial.com",
+            "sector": "Setor específico",
+            "ai_technologies": ["Computer Vision", "NLP"],
+            "founded_year": 2021,
+            "last_funding_amount": 5000000,
+            "investor_names": ["Nome do Investidor"],
+            "country": "{state['country']}",
+            "city": "Cidade",
+            "description": "Descrição da startup",
+            "has_venture_capital": true,
+            "sources": {{
+              "funding": ["URL da fonte"],
+              "validation": ["URL de confirmação"]
+            }}
+          }}
+        ]
+        """
 
         try:
-            result = self._make_openai_request(prompt)
+            logger.info("=== INICIANDO DISCOVERY AGENT ===")
+            result = self._make_openai_request_with_websearch(prompt)
+            logger.info(f"=== RESULTADO RECEBIDO: {result} ===")
+
             if "error" in result:
+                logger.error(f"Erro encontrado no resultado: {result['error']}")
                 state["errors"].append(f"Discovery error: {result['error']}")
                 state["discovered_startups"] = []
                 return state
 
             # Parse JSON response
-            content = result["content"].strip()
-            if content.startswith("```json"):
-                content = content.replace("```json", "").replace("```", "").strip()
-            elif content.startswith("```"):
-                content = content.replace("```", "", 1).replace("```", "").strip()
+            logger.info(f"=== INICIANDO PARSE JSON ===")
+            content = result.get("content", "")
+            logger.info(f"=== CONTENT ORIGINAL: '{content}' ===")
+            content = content.strip() if content else ""
+            logger.info(f"Conteúdo bruto recebido: {content[:200]}...")
+            logger.info(f"Tamanho do conteúdo: {len(content)}")
+
+            if not content:
+                logger.error("Conteúdo vazio recebido da API!")
+                state["errors"].append("Conteúdo vazio recebido da OpenAI API")
+                state["discovered_startups"] = []
+                return state
+
+            # Extrair JSON do conteúdo (pode ter texto antes e depois)
+            if "```json" in content:
+                # Encontrar o início do JSON
+                json_start = content.find("```json") + len("```json")
+                # Encontrar o fim do JSON
+                json_end = content.find("```", json_start)
+                if json_end != -1:
+                    content = content[json_start:json_end].strip()
+                else:
+                    # Se não encontrar o fim, pegar tudo após ```json
+                    content = content[json_start:].strip()
+            elif "```" in content:
+                # Tratar caso genérico de markdown
+                json_start = content.find("```") + 3
+                json_end = content.find("```", json_start)
+                if json_end != -1:
+                    content = content[json_start:json_end].strip()
+                else:
+                    content = content[json_start:].strip()
+
+            logger.info(f"JSON extraído: {content[:200]}...")
+
+            if not content:
+                logger.error("Conteúdo vazio após limpeza de markdown!")
+                state["errors"].append("Conteúdo vazio após limpeza")
+                state["discovered_startups"] = []
+                return state
 
             startups = json.loads(content)
 
-            # Garantir que temos exatamente o limite especificado
+            # Garantir limite
             if len(startups) > state['limit']:
                 startups = startups[:state['limit']]
 
             state["discovered_startups"] = startups
             state["total_tokens"] += result.get("tokens_used", 0)
 
-            logger.info(f"Discovery agent encontrou {len(startups)} startups")
+            logger.info(f"Discovery agent encontrou {len(startups)} startups via WebSearch")
 
         except json.JSONDecodeError as e:
             error_msg = f"JSON parse error in discovery: {str(e)}"
+            logger.error(f"=== JSON DECODE ERROR ===")
+            logger.error(f"Erro: {str(e)}")
+            logger.error(f"Content que causou erro: '{content if 'content' in locals() else 'CONTENT_NAO_DEFINIDO'}'")
+            logger.error(f"Result completo: {result if 'result' in locals() else 'RESULT_NAO_DEFINIDO'}")
             state["errors"].append(error_msg)
             state["discovered_startups"] = []
-            logger.error(error_msg)
         except Exception as e:
             error_msg = f"Discovery agent error: {str(e)}"
+            logger.error(f"=== EXCEPTION GERAL ===")
+            logger.error(f"Erro: {str(e)}")
+            logger.error(f"Tipo do erro: {type(e)}")
             state["errors"].append(error_msg)
             state["discovered_startups"] = []
-            logger.error(error_msg)
 
         return state
+
+    def _make_openai_request_with_websearch(self, prompt: str, max_tokens: int = 2500) -> Dict[str, Any]:
+        """Fazer requisição OpenAI com WebSearch usando estrutura correta"""
+
+        # Usar sempre modelo do env (deve ser gpt-4o-mini-search-preview)
+        payload = {
+            "model": self.model,  # Modelo do env
+            "web_search_options": {},  # Estrutura simples conforme OpenAI
+            "messages": [
+                {"role": "system", "content": "Você é um especialista em descobrir startups reais. Use busca web para encontrar informações atualizadas e precisas."},
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": max_tokens
+        }
+
+        try:
+            logger.info(f"Fazendo requisição WebSearch com modelo: {self.model}")
+            logger.info(f"Payload enviado: {json.dumps(payload, indent=2)}")
+
+            response = requests.post(
+                self.base_url,
+                headers=self.headers,
+                json=payload,
+                timeout=120  # Timeout maior para WebSearch
+            )
+
+            logger.info(f"Status da resposta: {response.status_code}")
+            logger.info(f"Headers da resposta: {dict(response.headers)}")
+
+            # Log da resposta bruta para debug
+            response_text = response.text
+            logger.info(f"Resposta bruta (primeiros 500 chars): {response_text[:500]}")
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"WebSearch concluído com sucesso usando {self.model}")
+
+                # Log da estrutura da resposta
+                logger.info(f"Estrutura da resposta: {list(result.keys())}")
+                if "choices" in result and result["choices"]:
+                    logger.info(f"Choices disponíveis: {len(result['choices'])}")
+                    message_content = result["choices"][0]["message"]["content"]
+                    logger.info(f"Conteúdo da mensagem (primeiros 200 chars): {message_content[:200] if message_content else 'VAZIO'}")
+                else:
+                    logger.error("Estrutura de choices não encontrada na resposta!")
+
+                return {
+                    "content": result["choices"][0]["message"]["content"] if result.get("choices") and result["choices"][0].get("message") else "",
+                    "tokens_used": result.get("usage", {}).get("total_tokens", 0)
+                }
+            else:
+                error_text = response.text[:500]
+                logger.error(f"Erro WebSearch {response.status_code}: {error_text}")
+                return {"error": f"WebSearch API Error: {response.status_code} - {error_text}"}
+
+        except Exception as e:
+            logger.error(f"Exceção na requisição WebSearch: {str(e)}")
+            return {"error": f"WebSearch Request error: {str(e)}"}
+
+
 
     def _source_validation_agent(self, state: OrchestrationState) -> OrchestrationState:
         """Agente para validar fontes confiáveis de funding e investidores"""
         state["current_step"] = "source_validation"
-        validated_sources = []
+        all_startups = []
 
         for startup in state.get("discovered_startups", []):
             source_validation = self._validate_startup_sources(startup)
             startup["source_validation"] = source_validation
 
+            # SEMPRE manter a startup, independente da confiabilidade das fontes
+            all_startups.append(startup)
+
             if source_validation["is_reliable"]:
-                validated_sources.append(startup)
                 logger.info(f"Fontes validadas para {startup['name']}: {source_validation['reliability_score']:.1f}%")
             else:
-                logger.warning(f"Fontes não confiáveis para {startup['name']}: {source_validation['issues']}")
+                logger.info(f"Fontes não confiáveis para {startup['name']}: {source_validation['issues']} - mantendo startup")
 
-        state["discovered_startups"] = validated_sources
-        logger.info(f"Source validation: {len(validated_sources)} startups com fontes confiáveis")
+        state["discovered_startups"] = all_startups
+        reliable_count = len([s for s in all_startups if s.get("source_validation", {}).get("is_reliable", False)])
+        logger.info(f"Source validation: {len(all_startups)} startups processadas ({reliable_count} com fontes confiáveis)")
 
         return state
 
@@ -302,10 +403,6 @@ Retorne apenas o array JSON, sem texto adicional."""
                     "name": startup["name"],
                     "website": startup.get("website"),
                     "sector": startup.get("sector"),
-                    "ceo_name": startup.get("ceo_name"),
-                    "cto_name": startup.get("cto_name"),
-                    "ceo_linkedin": startup.get("ceo_linkedin"),
-                    "cto_linkedin": startup.get("cto_linkedin"),
                     "reason": validation_result.get("reason", "Validation failed"),
                     "issues": validation_result.get("issues", []),
                     "validation_insight": validation_insight["insight"],
@@ -374,39 +471,27 @@ Retorne apenas o array JSON, sem texto adicional."""
         if not website_valid:
             issues.append("Website inacessível ou inválido")
 
-        # Validar LinkedIn profiles
-        ceo_linkedin_valid = self._validate_linkedin_profile(
-            startup.get("ceo_linkedin"),
-            startup.get("ceo_name")
-        )
-        cto_linkedin_valid = self._validate_linkedin_profile(
-            startup.get("cto_linkedin"),
-            startup.get("cto_name")
-        )
+        # Validar fontes de funding
+        funding_sources = startup.get("sources", {}).get("funding", [])
+        if not funding_sources:
+            issues.append("Sem fontes confiáveis para funding")
+            validation_scores["funding_sources_score"] = 0
+        else:
+            validation_scores["funding_sources_score"] = 100
 
-        validation_scores["ceo_linkedin_score"] = 100 if ceo_linkedin_valid else 0
-        validation_scores["cto_linkedin_score"] = 100 if cto_linkedin_valid else 0
+        # Calcular score total de validação
+        total_validation_score = sum(validation_scores.values()) / len(validation_scores) if validation_scores else 0
 
-        if not ceo_linkedin_valid:
-            issues.append("LinkedIn do CEO inválido ou não encontrado")
-        if not cto_linkedin_valid:
-            issues.append("LinkedIn do CTO inválido ou não encontrado")
-
-        # Calcular score total de validação (sem validação de existência por IA)
-        total_validation_score = sum(validation_scores.values()) / len(validation_scores)
-
-        # Determinar se é válida (critérios mais flexíveis)
+        # Determinar se é válida (critérios baseados em website e fontes)
         is_valid = (
-            total_validation_score >= 60 and  # Score mínimo reduzido para 60%
-            (website_valid or (ceo_linkedin_valid and cto_linkedin_valid))  # Website OU LinkedIn válidos
+            total_validation_score >= 50 and  # Score mínimo de 50%
+            website_valid  # Website deve estar válido
         )
 
         return {
             "is_valid": is_valid,
             "total_validation_score": total_validation_score,
             "website_valid": website_valid,
-            "ceo_linkedin_valid": ceo_linkedin_valid,
-            "cto_linkedin_valid": cto_linkedin_valid,
             "validation_scores": validation_scores,
             "issues": issues,
             "reason": "; ".join(issues) if issues else "Valid",
@@ -420,14 +505,13 @@ Retorne apenas o array JSON, sem texto adicional."""
 
         STARTUP: {startup.get('name')}
         Website: {startup.get('website')}
-        CEO: {startup.get('ceo_name')} - LinkedIn: {startup.get('ceo_linkedin')}
-        CTO: {startup.get('cto_name')} - LinkedIn: {startup.get('cto_linkedin')}
         Setor: {startup.get('sector')}
+        Tecnologias: {startup.get('ai_technologies')}
+        Funding: ${startup.get('last_funding_amount', 0):,}
+        Investidores: {startup.get('investor_names')}
 
         RESULTADOS DA VALIDAÇÃO:
-        - Website funcionando: {'✅' if validation_result.get('website_valid') else '❌'}
-        - LinkedIn CEO válido: {'✅' if validation_result.get('ceo_linkedin_valid') else '❌'}
-        - LinkedIn CTO válido: {'✅' if validation_result.get('cto_linkedin_valid') else '❌'}
+        - Website funcionando: {'SIM' if validation_result.get('website_valid') else 'NÃO'}
         - Score total: {validation_result.get('total_validation_score', 0):.1f}%
         - Issues encontrados: {validation_result.get('issues', [])}
 
@@ -440,7 +524,7 @@ Retorne apenas o array JSON, sem texto adicional."""
             "recommendation": "REJECT/INVESTIGATE/MANUAL_REVIEW",
             "analysis": {{
                 "website_analysis": "análise específica do website",
-                "linkedin_analysis": "análise dos perfis LinkedIn",
+                "funding_analysis": "análise das fontes de funding",
                 "existence_analysis": "análise da existência da empresa",
                 "data_quality": "qualidade geral dos dados fornecidos"
             }}
@@ -470,7 +554,7 @@ Retorne apenas o array JSON, sem texto adicional."""
             "recommendation": "MANUAL_REVIEW",
             "analysis": {
                 "website_analysis": "Website não acessível ou URL incorreta",
-                "linkedin_analysis": "Perfis LinkedIn não validados ou URLs incorretas",
+                "funding_analysis": "Fontes de funding não verificadas",
                 "data_quality": "Dados podem conter URLs incorretas ou informações desatualizadas"
             },
             "tokens_used": 0
@@ -517,25 +601,6 @@ Retorne apenas o array JSON, sem texto adicional."""
 
         return False
 
-    def _validate_linkedin_profile(self, linkedin_url: str, person_name: str) -> bool:
-        """Validar perfil LinkedIn"""
-        if not linkedin_url or not person_name:
-            return False
-
-        try:
-            parsed = urlparse(str(linkedin_url))
-            if "linkedin.com" not in parsed.netloc:
-                return False
-
-            if "/in/" not in parsed.path:
-                return False
-
-            # Fazer request básico
-            response = requests.get(str(linkedin_url), timeout=5, allow_redirects=True)
-            return response.status_code in [200, 999]  # 999 = LinkedIn bot detection
-
-        except:
-            return False
 
 
     def _calculate_startup_metrics(self, startup: Dict[str, Any]) -> Dict[str, Any]:
@@ -546,25 +611,25 @@ Retorne apenas o array JSON, sem texto adicional."""
         STARTUP: {startup.get('name')}
         Setor: {startup.get('sector')}
         Tecnologias IA: {startup.get('ai_technologies')}
-        CEO: {startup.get('ceo_name')}
-        CTO: {startup.get('cto_name')}
         Funding: ${startup.get('last_funding_amount', 0):,}
         Investidores: {startup.get('investor_names')}
+        País: {startup.get('country')}
+        Cidade: {startup.get('city')}
 
         CRITÉRIOS DE ANÁLISE:
         1. MARKET_DEMAND (0-100): Demanda do mercado
            - Setor em alta crescimento (Computer Vision: 85-95, NLP: 80-90, etc.)
-           - Tecnologias relevantes para NVIDIA (GPU/AI intensive: +20 pontos)
+           - Tecnologias relevantes para NVIDIA (GPU/AI intensive: adicional 20 pontos)
            - Aplicação prática e real (B2B enterprise: +15 pontos)
 
         2. TECHNICAL_LEVEL (0-100): Nível técnico
            - Tecnologias avançadas de IA (Deep Learning: 80-100, ML básico: 50-70)
            - Complexidade técnica (Multi-modal AI: 90-100, Single model: 60-80)
-           - CTO com background técnico forte (PhD/experience: +20 pontos)
+           - Complexidade da solução AI (adicional 20 pontos)
 
         3. PARTNERSHIP_POTENTIAL (0-100): Potencial de parceria
            - Funding recente e significativo (>$10M: 80-100, $1-10M: 60-80, <$1M: 30-60)
-           - Investidores tier-1 (Sequoia, A16Z: +20 pontos)
+           - Investidores tier-1 (Sequoia, A16Z: adicional 20 pontos)
            - Tração de mercado e clientes enterprise (+15 pontos)
 
         RETORNE APENAS JSON válido (sem markdown):
@@ -653,9 +718,7 @@ Retorne apenas o array JSON, sem texto adicional."""
             if any(tech.lower() in ['deep learning', 'neural network'] for tech in ai_techs):
                 market_score += 10
 
-            # Technical level baseado em CTO e tecnologias
-            if startup.get('cto_name') and startup.get('cto_linkedin'):
-                technical_score += 10
+            # Technical level baseado em tecnologias
             if len(ai_techs) >= 2:
                 technical_score += 10
             if any(tech.lower() in ['deep learning', 'machine learning'] for tech in ai_techs):
@@ -697,9 +760,12 @@ Retorne apenas o array JSON, sem texto adicional."""
         }
 
     def _make_openai_request(self, prompt: str, max_tokens: int = 3000) -> Dict[str, Any]:
-        """Fazer requisição para OpenAI"""
+        """Fazer requisição para OpenAI sem WebSearch (para métricas, validação, etc.)"""
+        # Para operações que não precisam de WebSearch, usar gpt-4o-mini padrão
+        model_without_search = "gpt-4o-mini"
+
         payload = {
-            "model": self.model,
+            "model": model_without_search,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens,
             "temperature": 0.1

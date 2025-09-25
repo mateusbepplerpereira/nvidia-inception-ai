@@ -87,14 +87,6 @@ class AgentService:
                 existing.last_funding_amount = startup_data.get("last_funding_amount")
             if startup_data.get("investor_names"):
                 existing.investor_names = startup_data.get("investor_names")
-            if startup_data.get("ceo_name"):
-                existing.ceo_name = startup_data.get("ceo_name")
-            if startup_data.get("ceo_linkedin"):
-                existing.ceo_linkedin = startup_data.get("ceo_linkedin")
-            if startup_data.get("cto_name"):
-                existing.cto_name = startup_data.get("cto_name")
-            if startup_data.get("cto_linkedin"):
-                existing.cto_linkedin = startup_data.get("cto_linkedin")
 
             # Sempre atualizar sources com validação
             existing.sources = sources
@@ -118,10 +110,6 @@ class AgentService:
                 last_funding_amount=startup_data.get("last_funding_amount"),
                 investor_names=startup_data.get("investor_names", []),
                 has_venture_capital=bool(startup_data.get("investor_names")),
-                ceo_name=startup_data.get("ceo_name"),
-                ceo_linkedin=startup_data.get("ceo_linkedin"),
-                cto_name=startup_data.get("cto_name"),
-                cto_linkedin=startup_data.get("cto_linkedin"),
                 sources=sources
             )
             self.db.add(startup)

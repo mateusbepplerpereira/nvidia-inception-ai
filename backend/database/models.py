@@ -20,10 +20,6 @@ class Startup(Base):
     total_funding = Column(Float)
     investor_names = Column(JSON)  # ["Investor 1", "Investor 2"]
     has_venture_capital = Column(Boolean, default=False)
-    ceo_name = Column(String(255))
-    ceo_linkedin = Column(String(500))
-    cto_name = Column(String(255))
-    cto_linkedin = Column(String(500))
     sources = Column(JSON)  # {"funding": ["Crunchbase", "PitchBook"], "investors": ["AngelList"], "validation": ["company_website"]}
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -67,10 +63,6 @@ class InvalidStartup(Base):
     name = Column(String(255), nullable=False)
     website = Column(String(500))
     sector = Column(String(255))
-    ceo_name = Column(String(255))
-    cto_name = Column(String(255))
-    ceo_linkedin = Column(String(500))
-    cto_linkedin = Column(String(500))
     reason = Column(Text)  # Motivo da invalidação
     validation_issues = Column(JSON)  # Issues específicos encontrados
     validation_insight = Column(Text)  # Insight detalhado da IA sobre a invalidação
@@ -87,7 +79,7 @@ class StartupMetrics(Base):
 
     # Métricas principais
     market_demand_score = Column(Float)  # 0-100: Alta demanda do mercado
-    technical_level_score = Column(Float)  # 0-100: Nível técnico dos CTOs
+    technical_level_score = Column(Float)  # 0-100: Nível técnico da solução
     partnership_potential_score = Column(Float)  # 0-100: Potencial de parceria
 
     # Score total
