@@ -1,10 +1,10 @@
-from pydantic import BaseModel, HttpUrl
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, HttpUrl, field_validator
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 
 class StartupBase(BaseModel):
     name: str
-    website: Optional[HttpUrl] = None
+    website: Optional[Union[HttpUrl, str]] = None
     sector: Optional[str] = None
     founded_year: Optional[int] = None
     country: Optional[str] = None
@@ -18,12 +18,22 @@ class StartupBase(BaseModel):
     has_venture_capital: bool = False
     sources: Optional[Dict[str, Any]] = {}
 
+    @field_validator('website')
+    @classmethod
+    def validate_website(cls, v):
+        if v is None or v == "" or v in ["Não encontrado", "N/A", "Not found"]:
+            return None
+        try:
+            return HttpUrl(v) if isinstance(v, str) else v
+        except:
+            return None
+
 class StartupCreate(StartupBase):
     pass
 
 class StartupUpdate(BaseModel):
     name: Optional[str] = None
-    website: Optional[HttpUrl] = None
+    website: Optional[Union[HttpUrl, str]] = None
     sector: Optional[str] = None
     founded_year: Optional[int] = None
     country: Optional[str] = None
@@ -36,6 +46,16 @@ class StartupUpdate(BaseModel):
     investor_names: Optional[List[str]] = None
     has_venture_capital: Optional[bool] = None
     sources: Optional[Dict[str, Any]] = None
+
+    @field_validator('website')
+    @classmethod
+    def validate_website(cls, v):
+        if v is None or v == "" or v in ["Não encontrado", "N/A", "Not found"]:
+            return None
+        try:
+            return HttpUrl(v) if isinstance(v, str) else v
+        except:
+            return None
 
 class LeadershipInfo(BaseModel):
     name: str
