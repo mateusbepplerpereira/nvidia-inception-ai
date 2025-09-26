@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { startupService, agentService } from '../services/api';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import ReportModal from '../components/ReportModal';
 
 function Startups() {
   const navigate = useNavigate();
@@ -23,6 +24,8 @@ function Startups() {
     technologies: [],
     countries: []
   });
+  const [showReportModal, setShowReportModal] = useState(false);
+  // Estados do modal movidos para o componente
 
   const itemsPerPage = 10;
 
@@ -30,6 +33,8 @@ function Startups() {
     loadStartups();
     loadMetrics();
   }, []);
+
+  // Modal gerenciado pelo componente
 
   const loadStartups = async () => {
     try {
@@ -119,6 +124,9 @@ function Startups() {
     setCurrentPage(1);
   };
 
+
+  // Função movida para o componente
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -133,13 +141,22 @@ function Startups() {
         <h1 className="text-3xl font-bold text-white">Startups</h1>
         <div className="flex items-center space-x-4">
           <span className="text-gray-400">Total: {filteredStartups.length} startups</span>
-          <button
-            onClick={() => { loadStartups(); loadMetrics(); }}
-            className="bg-nvidia-green text-nvidia-dark px-4 py-2 rounded-md hover:bg-green-600 transition-colors flex items-center space-x-2"
-          >
-            <ion-icon name="refresh-outline"></ion-icon>
-            <span>Atualizar</span>
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="bg-nvidia-green text-nvidia-dark px-4 py-2 rounded-md hover:bg-green-600 transition-colors flex items-center space-x-2"
+            >
+              <ion-icon name="document-text-outline"></ion-icon>
+              <span>Gerar Relatório</span>
+            </button>
+            <button
+              onClick={() => { loadStartups(); loadMetrics(); }}
+              className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors flex items-center space-x-2"
+            >
+              <ion-icon name="refresh-outline"></ion-icon>
+              <span>Atualizar</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -386,6 +403,14 @@ function Startups() {
           </div>
         </div>
       )}
+
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        availableMetrics={availableFilters}
+        title="Gerar Relatório de Startups"
+      />
     </div>
   );
 }

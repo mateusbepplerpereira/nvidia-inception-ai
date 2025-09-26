@@ -4,8 +4,349 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NVIDIA Inception AI</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- jQuery and Select2 -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <!-- Ionicons -->
     <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
     <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+    <!-- Custom Select2 Styles -->
+    <style>
+      /* RESET COMPLETO DO SELECT2 */
+      .select2-container * {
+        box-sizing: border-box !important;
+      }
+
+      /* Container principal */
+      .select2-container {
+        width: 100% !important;
+        z-index: 10001 !important;
+      }
+
+      .select2-container--classic .select2-selection--multiple {
+        background-color: #2A2A2A !important;
+        border: 1px solid #4A4A4A !important;
+        border-radius: 6px !important;
+        color: white !important;
+        min-height: 60px !important;
+        padding: 8px !important;
+        width: 100% !important;
+        position: relative !important;
+      }
+
+      /* Container dos items renderizados - ESTRUTURA SIMPLES */
+      .select2-container--classic .select2-selection--multiple .select2-selection__rendered {
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        position: relative !important;
+        /* ESTRUTURA BÁSICA */
+        display: block !important;
+        min-height: 60px !important;
+      }
+
+      /* Campo de busca - POSIÇÃO ABSOLUTA NO TOPO */
+      .select2-container--classic .select2-search--inline {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        float: none !important;
+        /* FORÇAR POSIÇÃO NO TOPO */
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 10 !important;
+      }
+
+      .select2-container--classic .select2-search--inline .select2-search__field {
+        background-color: #2A2A2A !important;
+        color: white !important;
+        border: 1px solid #4A4A4A !important;
+        border-radius: 4px !important;
+        padding: 10px 14px !important;
+        width: 100% !important;
+        margin: 0 !important;
+        font-size: 14px !important;
+        font-family: 'Montserrat', sans-serif !important;
+        font-weight: 400 !important;
+        outline: none !important;
+        box-sizing: border-box !important;
+        height: 40px !important;
+        line-height: 20px !important;
+      }
+
+      .select2-container--classic .select2-search--inline .select2-search__field:focus {
+        border-color: #76B900 !important;
+      }
+
+      .select2-container--classic .select2-search--inline .select2-search__field::placeholder {
+        color: #999 !important;
+        opacity: 1 !important;
+        font-family: 'Montserrat', sans-serif !important;
+        font-weight: 400 !important;
+      }
+
+      /* BADGES - POSICIONAMENTO ABAIXO DO CAMPO */
+      .select2-container--classic .select2-selection--multiple .select2-selection__choice {
+        background-color: #76B900 !important;
+        border: 1px solid #76B900 !important;
+        color: #1A1A1A !important;
+        border-radius: 6px !important;
+        padding: 8px 16px !important;
+        margin: 2px 8px 2px 0 !important;
+        font-weight: 500 !important;
+        font-size: 12px !important;
+        font-family: 'Montserrat', sans-serif !important;
+        line-height: 1.2 !important;
+        /* POSICIONAMENTO FLEXÍVEL ABAIXO DO SEARCH */
+        display: inline-block !important;
+        position: relative !important;
+        float: left !important;
+        /* FORÇAR ESPAÇO PARA O CAMPO DE BUSCA */
+        margin-top: 50px !important;
+        /* WIDTH TOTALMENTE DINÂMICO */
+        width: auto !important;
+        max-width: none !important;
+        flex-shrink: 0 !important;
+        /* REDUZIR ESPAÇAMENTO VERTICAL */
+        margin-bottom: 4px !important;
+        vertical-align: top !important;
+      }
+
+      /* Container dos badges com flexbox */
+      .select2-container--classic .select2-selection--multiple .select2-selection__rendered::after {
+        content: "" !important;
+        display: block !important;
+        clear: both !important;
+        height: 0 !important;
+      }
+
+      /* Remove button nos badges */
+      .select2-container--classic .select2-selection--multiple .select2-selection__choice__remove {
+        color: #1A1A1A !important;
+        font-weight: bold !important;
+        margin-right: 6px !important;
+        cursor: pointer !important;
+        font-size: 14px !important;
+      }
+
+      .select2-container--classic .select2-selection--multiple .select2-selection__choice__remove:hover {
+        color: #fff !important;
+        background-color: rgba(255,255,255,0.2) !important;
+        border-radius: 3px !important;
+        padding: 1px 3px !important;
+      }
+
+      /* DROPDOWN - CONTROLE RIGOROSO DE WIDTH */
+      .select2-dropdown {
+        background-color: #2A2A2A !important;
+        border: 1px solid #4A4A4A !important;
+        border-radius: 6px !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
+        z-index: 10002 !important;
+        /* FORÇAR WIDTH EXATO */
+        box-sizing: border-box !important;
+      }
+
+      /* POSICIONAMENTO EXATO DO DROPDOWN */
+      .select2-container--classic.select2-container--open .select2-dropdown {
+        /* Força o dropdown a ter o mesmo width do container */
+        left: 0 !important;
+        right: 0 !important;
+      }
+
+      /* Options no dropdown */
+      .select2-results__option {
+        background-color: #2A2A2A !important;
+        color: white !important;
+        padding: 10px 14px !important;
+        font-size: 14px !important;
+        font-family: 'Montserrat', sans-serif !important;
+        cursor: pointer !important;
+        /* FORÇAR WIDTH */
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+
+      /* HOVER com estilo diferenciado */
+      .select2-results__option--highlighted {
+        background-color: #4A4A4A !important;
+        color: white !important;
+        font-weight: 400 !important;
+      }
+
+      /* SELECTED com estilo mais marcado */
+      .select2-results__option--selected {
+        background-color: #76B900 !important;
+        color: #1A1A1A !important;
+        font-weight: 500 !important;
+      }
+
+      /* Container dos results com scroll customizado */
+      .select2-results {
+        max-height: 250px !important;
+        overflow-y: auto !important;
+        position: relative !important;
+      }
+
+      .select2-results__options {
+        max-height: 200px !important;
+        overflow-y: auto !important;
+        /* Scrollbar customizada */
+        scrollbar-width: thin !important;
+        scrollbar-color: #76B900 #2A2A2A !important;
+      }
+
+      /* Webkit scrollbar para Chrome/Safari */
+      .select2-results__options::-webkit-scrollbar {
+        width: 8px !important;
+      }
+
+      .select2-results__options::-webkit-scrollbar-track {
+        background: #2A2A2A !important;
+        border-radius: 4px !important;
+      }
+
+      .select2-results__options::-webkit-scrollbar-thumb {
+        background: #76B900 !important;
+        border-radius: 4px !important;
+      }
+
+      .select2-results__options::-webkit-scrollbar-thumb:hover {
+        background: #5A8C00 !important;
+      }
+
+      /* Indicador de "mais itens" */
+      .select2-results::after {
+        content: "⌄ Mais opções abaixo" !important;
+        position: sticky !important;
+        bottom: 0 !important;
+        background: linear-gradient(transparent, #2A2A2A 50%) !important;
+        color: #999 !important;
+        text-align: center !important;
+        padding: 8px !important;
+        font-size: 11px !important;
+        font-family: 'Montserrat', sans-serif !important;
+        pointer-events: none !important;
+        display: block !important;
+      }
+
+      /* Esconder search do dropdown */
+      .select2-search--dropdown {
+        display: none !important;
+      }
+
+      /* JAVASCRIPT OVERRIDE - Força reordenação DOM */
+      .select2-container--classic .select2-selection--multiple .select2-selection__rendered .select2-search--inline {
+        /* Força o search sempre no topo */
+        position: relative !important;
+        display: block !important;
+        width: 100% !important;
+        margin-bottom: 8px !important;
+      }
+    </style>
+
+    <!-- Custom Select2 JavaScript -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        // Observer para controle completo
+        const observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            mutation.addedNodes.forEach(function(node) {
+              // Controle do dropdown width
+              if (node.nodeType === 1 && node.classList && node.classList.contains('select2-dropdown')) {
+                const container = document.querySelector('.select2-container--open');
+                if (container) {
+                  const containerWidth = container.getBoundingClientRect().width;
+                  node.style.width = containerWidth + 'px';
+                  node.style.maxWidth = containerWidth + 'px';
+                  node.style.minWidth = containerWidth + 'px';
+                }
+              }
+
+              // Forçar layout dos badges
+              if (node.nodeType === 1 && node.classList && node.classList.contains('select2-selection__choice')) {
+                setTimeout(() => {
+                  fixSelect2Layout();
+                }, 10);
+              }
+            });
+          });
+        });
+
+        // Função para corrigir layout
+        function fixSelect2Layout() {
+          const containers = document.querySelectorAll('.select2-container--classic .select2-selection__rendered');
+          containers.forEach(rendered => {
+            const searchInline = rendered.querySelector('.select2-search--inline');
+            const choices = rendered.querySelectorAll('.select2-selection__choice');
+
+            // Altura dinâmica apenas quando tem badges
+            if (choices.length > 0) {
+              // Altura dinâmica baseada no conteúdo real, não em cálculo fixo
+              const containerHeight = 50 + 40 + 8; // campo + uma linha de badges + padding
+              rendered.style.minHeight = containerHeight + 'px';
+            } else {
+              // Sem badges, altura mínima apenas para o campo
+              rendered.style.minHeight = '60px';
+            }
+            rendered.style.position = 'relative';
+
+            if (searchInline) {
+              // Forçar campo de busca no topo
+              searchInline.style.position = 'absolute';
+              searchInline.style.top = '0';
+              searchInline.style.left = '0';
+              searchInline.style.right = '0';
+              searchInline.style.zIndex = '10';
+              searchInline.style.width = '100%';
+              searchInline.style.margin = '0';
+
+              // Manter placeholder sempre visível com força total
+              const searchField = searchInline.querySelector('.select2-search__field');
+              if (searchField) {
+                searchField.setAttribute('placeholder', 'Digite para buscar...');
+                searchField.style.setProperty('--placeholder', '"Digite para buscar..."', 'important');
+              }
+            }
+
+            choices.forEach((choice, index) => {
+              // Aplicar apenas no primeiro badge o margin-top
+              if (index === 0) {
+                choice.style.marginTop = '50px';
+              } else {
+                choice.style.marginTop = '4px';
+              }
+
+              choice.style.position = 'relative';
+              choice.style.float = 'left';
+              choice.style.width = 'auto';
+              choice.style.maxWidth = 'none'; // Remover limitação de largura
+              choice.style.display = 'inline-block';
+              choice.style.marginBottom = '4px';
+              choice.style.marginRight = '8px';
+              choice.style.verticalAlign = 'top';
+              choice.style.lineHeight = '1.2';
+              // Remover clear: left - deixar quebra natural
+            });
+          });
+        }
+
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+
+        // Executar correção periodicamente
+        setInterval(fixSelect2Layout, 100);
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

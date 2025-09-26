@@ -60,4 +60,13 @@ export const agentService = {
   },
 };
 
+export const reportService = {
+  async generateReport(filters) {
+    const response = await api.post('/startups/report', filters, {
+      responseType: 'blob'
+    });
+    return response.data;
+  },
+};
+
 export default api;

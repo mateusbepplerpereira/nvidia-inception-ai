@@ -80,3 +80,8 @@ class StartupResponse(StartupBase):
 
     class Config:
         from_attributes = True
+
+class ReportFilters(BaseModel):
+    sectors: Optional[List[str]] = []
+    technologies: Optional[List[str]] = []
+    max_startups: int = 50
