@@ -14,9 +14,8 @@ function Startups() {
     sector: '',
     technology: '',
     country: '',
-    hasVC: '',
-    sortBy: 'created_at',
-    sortOrder: 'desc'
+    sortBy: 'partnership',
+    sortOrder: 'asc'
   });
   const [metricsData, setMetricsData] = useState({});
   const [availableFilters, setAvailableFilters] = useState({
@@ -74,7 +73,6 @@ function Startups() {
     if (filters.sector && startup.sector !== filters.sector) return false;
     if (filters.technology && !startup.ai_technologies?.includes(filters.technology)) return false;
     if (filters.country && startup.country !== filters.country) return false;
-    if (filters.hasVC !== '' && startup.has_venture_capital !== (filters.hasVC === 'true')) return false;
     return true;
   }).sort((a, b) => {
     const order = filters.sortOrder === 'asc' ? 1 : -1;
@@ -92,7 +90,8 @@ function Startups() {
       case 'partnership':
         const partnershipA = metricsData[a.id]?.partnership_potential_score || 0;
         const partnershipB = metricsData[b.id]?.partnership_potential_score || 0;
-        return order * (partnershipB - partnershipA);
+        // Para potencial de parceria, invertemos a lógica: "asc" mostra maiores primeiro
+        return filters.sortOrder === 'asc' ? (partnershipB - partnershipA) : (partnershipA - partnershipB);
       default:
         return 0;
     }
@@ -114,9 +113,8 @@ function Startups() {
       sector: '',
       technology: '',
       country: '',
-      hasVC: '',
-      sortBy: 'created_at',
-      sortOrder: 'desc'
+      sortBy: 'partnership',
+      sortOrder: 'asc'
     });
     setCurrentPage(1);
   };
@@ -174,7 +172,7 @@ function Startups() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <div>
             <label className="block text-xs text-gray-400 mb-1">Setor</label>
             <select
@@ -218,19 +216,6 @@ function Startups() {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Status VC</label>
-            <select
-              value={filters.hasVC}
-              onChange={(e) => handleFilterChange('hasVC', e.target.value)}
-              className="bg-nvidia-lightGray text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green w-full"
-            >
-              <option value="">Todos</option>
-              <option value="true">Com VC</option>
-              <option value="false">Sem VC</option>
-            </select>
-          </div>
-
-          <div>
             <label className="block text-xs text-gray-400 mb-1">Ordenar por</label>
             <select
               value={filters.sortBy}
@@ -261,105 +246,101 @@ function Startups() {
 
       {/* Startups List */}
       <div className="bg-nvidia-gray rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-nvidia-lightGray">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Startup
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Setor
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Tecnologias
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                País
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Investimento VC
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Score
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Adicionada
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Ações
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-nvidia-lightGray">
-            {paginatedStartups.map((startup) => (
-              <tr key={startup.id} className="hover:bg-nvidia-lightGray transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div>
-                    <p className="text-white font-medium">{startup.name}</p>
-                    {startup.city && (
-                      <p className="text-gray-400 text-sm">{startup.city}</p>
-                    )}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                  {startup.sector || '-'}
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex flex-wrap gap-1">
-                    {startup.ai_technologies?.slice(0, 2).map((tech, idx) => (
-                      <span key={idx} className="px-2 py-1 text-xs bg-nvidia-green text-nvidia-dark rounded">
-                        {tech}
-                      </span>
-                    ))}
-                    {startup.ai_technologies?.length > 2 && (
-                      <span className="px-2 py-1 text-xs bg-nvidia-lightGray text-gray-300 rounded">
-                        +{startup.ai_technologies.length - 2}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                  {startup.country || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {startup.has_venture_capital ? (
-                    <span className="text-nvidia-green">
-                      <ion-icon name="checkmark-circle"></ion-icon>
-                    </span>
-                  ) : (
-                    <span className="text-gray-500">
-                      <ion-icon name="close-circle"></ion-icon>
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {metricsData[startup.id]?.total_score ? (
-                    <span className="text-nvidia-green font-semibold">
-                      {metricsData[startup.id].total_score.toFixed(1)}
-                    </span>
-                  ) : startup.analysis?.[0]?.priority_score ? (
-                    <span className="text-nvidia-green font-semibold">
-                      {startup.analysis[0].priority_score.toFixed(1)}
-                    </span>
-                  ) : (
-                    <span className="text-gray-500">-</span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-400 text-sm">
-                  {format(new Date(startup.created_at), 'dd MMM yyyy', { locale: ptBR })}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <button
-                    onClick={() => navigate(`/startups/${startup.id}`)}
-                    className="text-nvidia-green hover:text-green-400"
-                  >
-                    <ion-icon name="eye-outline" size="large"></ion-icon>
-                  </button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-full">
+            <thead className="bg-nvidia-lightGray">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider min-w-48">
+                  Startup
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider min-w-24">
+                  Setor
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider min-w-32">
+                  Tecnologias
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider min-w-24">
+                  País
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider min-w-20">
+                  Score
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider min-w-24">
+                  Adicionada
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider min-w-20">
+                  Ações
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-nvidia-lightGray">
+              {paginatedStartups.map((startup) => (
+                <tr key={startup.id} className="hover:bg-nvidia-lightGray transition-colors">
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    <div>
+                      <p className="text-white font-medium">{startup.name}</p>
+                      {startup.city && (
+                        <p className="text-gray-400 text-sm">{startup.city}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-gray-300">
+                    <span className="hidden md:inline">{startup.sector || '-'}</span>
+                    <span className="md:hidden">
+                      {startup.sector ? startup.sector.substring(0, 10) + (startup.sector.length > 10 ? '...' : '') : '-'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="flex flex-wrap gap-1">
+                      {startup.ai_technologies?.slice(0, 2).map((tech, idx) => (
+                        <span key={idx} className="px-2 py-1 text-xs bg-nvidia-green text-nvidia-dark rounded">
+                          {tech}
+                        </span>
+                      ))}
+                      {startup.ai_technologies?.length > 2 && (
+                        <span className="px-2 py-1 text-xs bg-nvidia-lightGray text-gray-300 rounded">
+                          +{startup.ai_technologies.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-gray-300">
+                    {startup.country || '-'}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    {metricsData[startup.id]?.total_score ? (
+                      <span className="text-nvidia-green font-semibold">
+                        {metricsData[startup.id].total_score.toFixed(1)}
+                      </span>
+                    ) : startup.analysis?.[0]?.priority_score ? (
+                      <span className="text-nvidia-green font-semibold">
+                        {startup.analysis[0].priority_score.toFixed(1)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">-</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap text-gray-400 text-sm">
+                    <span className="hidden md:inline">
+                      {format(new Date(startup.created_at), 'dd MMM yyyy', { locale: ptBR })}
+                    </span>
+                    <span className="md:hidden">
+                      {format(new Date(startup.created_at), 'dd/MM', { locale: ptBR })}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => navigate(`/startups/${startup.id}`)}
+                      className="text-nvidia-green hover:text-green-400"
+                    >
+                      <ion-icon name="eye-outline" size="large"></ion-icon>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Pagination */}
