@@ -15,8 +15,8 @@ function Startups() {
     sector: '',
     technology: '',
     country: '',
-    sortBy: 'partnership',
-    sortOrder: 'asc'
+    sortBy: 'score',
+    sortOrder: 'desc'
   });
   const [metricsData, setMetricsData] = useState({});
   const [availableFilters, setAvailableFilters] = useState({
@@ -80,23 +80,21 @@ function Startups() {
     if (filters.country && startup.country !== filters.country) return false;
     return true;
   }).sort((a, b) => {
-    const order = filters.sortOrder === 'asc' ? 1 : -1;
     switch (filters.sortBy) {
       case 'name':
-        return order * (a.name || '').localeCompare(b.name || '');
+        const nameOrder = filters.sortOrder === 'asc' ? 1 : -1;
+        return nameOrder * (a.name || '').localeCompare(b.name || '');
       case 'sector':
-        return order * (a.sector || '').localeCompare(b.sector || '');
+        const sectorOrder = filters.sortOrder === 'asc' ? 1 : -1;
+        return sectorOrder * (a.sector || '').localeCompare(b.sector || '');
       case 'created_at':
-        return order * (new Date(b.created_at) - new Date(a.created_at));
+        const dateOrder = filters.sortOrder === 'asc' ? 1 : -1;
+        return dateOrder * (new Date(b.created_at) - new Date(a.created_at));
       case 'score':
         const scoreA = metricsData[a.id]?.total_score || a.analysis?.[0]?.priority_score || 0;
         const scoreB = metricsData[b.id]?.total_score || b.analysis?.[0]?.priority_score || 0;
-        return order * (scoreB - scoreA);
-      case 'partnership':
-        const partnershipA = metricsData[a.id]?.partnership_potential_score || 0;
-        const partnershipB = metricsData[b.id]?.partnership_potential_score || 0;
-        // Para potencial de parceria, invertemos a lógica: "asc" mostra maiores primeiro
-        return filters.sortOrder === 'asc' ? (partnershipB - partnershipA) : (partnershipA - partnershipB);
+        // Para score: desc = maiores primeiro, asc = menores primeiro
+        return filters.sortOrder === 'desc' ? (scoreB - scoreA) : (scoreA - scoreB);
       default:
         return 0;
     }
@@ -118,8 +116,8 @@ function Startups() {
       sector: '',
       technology: '',
       country: '',
-      sortBy: 'partnership',
-      sortOrder: 'asc'
+      sortBy: 'score',
+      sortOrder: 'desc'
     });
     setCurrentPage(1);
   };
@@ -242,8 +240,7 @@ function Startups() {
               <option value="created_at">Data de Adição</option>
               <option value="name">Nome</option>
               <option value="sector">Setor</option>
-              <option value="score">Score Total</option>
-              <option value="partnership">Potencial de Parceria</option>
+              <option value="score">Potencial Parceria</option>
             </select>
           </div>
 

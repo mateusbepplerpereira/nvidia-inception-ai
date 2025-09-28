@@ -46,68 +46,11 @@ class ReportService:
             bottom=Side(style='thin')
         )
 
-        # Título principal
-        ws['A1'] = "Relatório de Startups - NVIDIA Inception"
-        ws['A1'].font = title_font
-        ws['A1'].alignment = Alignment(horizontal='center')
-        ws.merge_cells('A1:H1')
-
-        # Data de geração
-        ws['A2'] = f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
-        ws['A2'].font = normal_font
-        ws.merge_cells('A2:H2')
-
-        # Informações dos filtros
-        row = 4
-        ws[f'A{row}'] = "Filtros Aplicados:"
-        ws[f'A{row}'].font = header_font
-        row += 1
-
-        if sectors:
-            ws[f'A{row}'] = f"Setores: {', '.join(sectors)}"
-            ws[f'A{row}'].font = normal_font
-            row += 1
-
-        if technologies:
-            ws[f'A{row}'] = f"Tecnologias: {', '.join(technologies)}"
-            ws[f'A{row}'].font = normal_font
-            row += 1
-
-        if countries:
-            ws[f'A{row}'] = f"Países: {', '.join(countries)}"
-            ws[f'A{row}'].font = normal_font
-            row += 1
-
-        ws[f'A{row}'] = f"Máximo de startups: {max_startups}"
-        ws[f'A{row}'].font = normal_font
-        row += 1
-
-        ws[f'A{row}'] = f"Ordenado por: {sort_by} ({sort_order})"
-        ws[f'A{row}'].font = normal_font
-        row += 1
-
-        if start_date or end_date:
-            date_filter = ""
-            if start_date:
-                date_filter += f"De: {start_date.strftime('%d/%m/%Y')}"
-            if end_date:
-                if date_filter:
-                    date_filter += f" até: {end_date.strftime('%d/%m/%Y')}"
-                else:
-                    date_filter += f"Até: {end_date.strftime('%d/%m/%Y')}"
-            ws[f'A{row}'] = f"Período: {date_filter}"
-            ws[f'A{row}'].font = normal_font
-            row += 1
-
-        ws[f'A{row}'] = f"Total encontrado: {len(startups)}"
-        ws[f'A{row}'].font = normal_font
-        row += 2
-
-        # Cabeçalho da tabela
+        # Cabeçalho da tabela - começando direto na linha 1
+        row = 1
         headers = [
             'Nome', 'Setor', 'País', 'Cidade', 'Fundação', 'Website',
-            'Tecnologias IA', 'Score Total', 'Score Mercado', 'Score Técnico',
-            'Score Parceria', 'Funding Total (USD)', 'Último Round (USD)', 'Descrição'
+            'Tecnologias IA', 'Score', 'Descrição'
         ]
 
         for col, header in enumerate(headers, 1):
@@ -133,11 +76,6 @@ class ReportService:
                 startup.website or '',
                 ', '.join(startup.ai_technologies) if startup.ai_technologies else '',
                 f"{metrics.total_score:.1f}" if metrics and metrics.total_score else '0.0',
-                f"{metrics.market_demand_score:.1f}" if metrics and metrics.market_demand_score else '0.0',
-                f"{metrics.technical_level_score:.1f}" if metrics and metrics.technical_level_score else '0.0',
-                f"{metrics.partnership_potential_score:.1f}" if metrics and metrics.partnership_potential_score else '0.0',
-                f"${startup.total_funding/1000000:.1f}M" if startup.total_funding else '',
-                f"${startup.last_funding_amount/1000000:.1f}M" if startup.last_funding_amount else '',
                 (startup.description[:100] + '...') if startup.description and len(startup.description) > 100 else (startup.description or '')
             ]
 
@@ -150,8 +88,8 @@ class ReportService:
             row += 1
 
         # Ajustar largura das colunas
-        column_widths = [25, 15, 12, 12, 10, 30, 40, 12, 12, 12, 12, 15, 15, 50]
-        column_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
+        column_widths = [25, 15, 12, 12, 10, 30, 40, 12, 50]
+        column_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
         for i, width in enumerate(column_widths):
             if i < len(column_letters):
                 ws.column_dimensions[column_letters[i]].width = width
@@ -201,25 +139,20 @@ class ReportService:
         query = query.outerjoin(StartupMetrics)
 
         if sort_by == "score":
-            if sort_order == "asc":
-                query = query.order_by(StartupMetrics.total_score.asc().nullslast())
-            else:
+            if sort_order == "desc":
                 query = query.order_by(StartupMetrics.total_score.desc().nullslast())
+            else:
+                query = query.order_by(StartupMetrics.total_score.asc().nullslast())
         elif sort_by == "created_at":
-            if sort_order == "asc":
-                query = query.order_by(Startup.created_at.asc())
-            else:
+            if sort_order == "desc":
                 query = query.order_by(Startup.created_at.desc())
+            else:
+                query = query.order_by(Startup.created_at.asc())
         elif sort_by == "name":
-            if sort_order == "asc":
-                query = query.order_by(Startup.name.asc())
-            else:
+            if sort_order == "desc":
                 query = query.order_by(Startup.name.desc())
-        elif sort_by == "funding":
-            if sort_order == "asc":
-                query = query.order_by(Startup.total_funding.asc().nullslast())
             else:
-                query = query.order_by(Startup.total_funding.desc().nullslast())
+                query = query.order_by(Startup.name.asc())
         else:
             # Default fallback
             query = query.order_by(

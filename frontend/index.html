@@ -37,29 +37,33 @@
         position: relative !important;
       }
 
-      /* Container dos items renderizados - ESTRUTURA SIMPLES */
+      /* Container dos items renderizados - FLEXBOX PARA BADGES */
       .select2-container--classic .select2-selection--multiple .select2-selection__rendered {
-        padding: 0 !important;
+        padding: 40px 4px 4px 4px !important;
         margin: 0 !important;
         width: 100% !important;
         position: relative !important;
-        /* ESTRUTURA BÁSICA */
-        display: block !important;
-        min-height: 60px !important;
+        /* FLEXBOX PARA ORGANIZAR BADGES */
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: flex-start !important;
+        gap: 2px !important;
+        min-height: 48px !important;
+        height: auto !important;
       }
 
-      /* Campo de busca - POSIÇÃO ABSOLUTA NO TOPO */
+      /* Campo de busca - POSIÇÃO NO TOPO */
       .select2-container--classic .select2-search--inline {
         display: block !important;
         width: 100% !important;
         margin: 0 !important;
         float: none !important;
-        /* FORÇAR POSIÇÃO NO TOPO */
         position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        z-index: 10 !important;
+        top: 4px !important;
+        left: 4px !important;
+        right: 4px !important;
+        width: calc(100% - 8px) !important;
+        z-index: 1 !important;
       }
 
       .select2-container--classic .select2-search--inline .select2-search__field {
@@ -70,7 +74,7 @@
         padding: 10px 14px !important;
         width: 100% !important;
         margin: 0 !important;
-        font-size: 14px !important;
+        font-size: 12px !important;
         font-family: 'Montserrat', sans-serif !important;
         font-weight: 400 !important;
         outline: none !important;
@@ -83,6 +87,13 @@
         border-color: #76B900 !important;
       }
 
+      /* Placeholder com fonte menor */
+      .select2-container--classic .select2-search--inline .select2-search__field::placeholder {
+        font-size: 12px !important;
+        color: #999 !important;
+        opacity: 1 !important;
+      }
+
       .select2-container--classic .select2-search--inline .select2-search__field::placeholder {
         color: #999 !important;
         opacity: 1 !important;
@@ -90,31 +101,24 @@
         font-weight: 400 !important;
       }
 
-      /* BADGES - POSICIONAMENTO ABAIXO DO CAMPO */
+      /* BADGES - ESTILO COMPACTO E MODERNO */
       .select2-container--classic .select2-selection--multiple .select2-selection__choice {
         background-color: #76B900 !important;
-        border: 1px solid #76B900 !important;
+        border: none !important;
         color: #1A1A1A !important;
-        border-radius: 6px !important;
-        padding: 8px 16px !important;
-        margin: 2px 8px 2px 0 !important;
+        border-radius: 9999px !important;
+        padding: 0px 5px !important;
+        margin: 1px !important;
         font-weight: 500 !important;
-        font-size: 12px !important;
+        font-size: 10px !important;
         font-family: 'Montserrat', sans-serif !important;
-        line-height: 1.2 !important;
-        /* POSICIONAMENTO FLEXÍVEL ABAIXO DO SEARCH */
-        display: inline-block !important;
+        line-height: 1.5 !important;
+        display: inline-flex !important;
+        align-items: center !important;
         position: relative !important;
-        float: left !important;
-        /* FORÇAR ESPAÇO PARA O CAMPO DE BUSCA */
-        margin-top: 50px !important;
-        /* WIDTH TOTALMENTE DINÂMICO */
+        float: none !important;
         width: auto !important;
         max-width: none !important;
-        flex-shrink: 0 !important;
-        /* REDUZIR ESPAÇAMENTO VERTICAL */
-        margin-bottom: 4px !important;
-        vertical-align: top !important;
       }
 
       /* Container dos badges com flexbox */
@@ -129,9 +133,11 @@
       .select2-container--classic .select2-selection--multiple .select2-selection__choice__remove {
         color: #1A1A1A !important;
         font-weight: bold !important;
-        margin-right: 6px !important;
+        margin-right: 2px !important;
+        margin-left: 1px !important;
         cursor: pointer !important;
-        font-size: 14px !important;
+        font-size: 11px !important;
+        padding: 0 !important;
       }
 
       .select2-container--classic .select2-selection--multiple .select2-selection__choice__remove:hover {
@@ -203,9 +209,15 @@
         scrollbar-color: #76B900 #2A2A2A !important;
       }
 
-      /* Webkit scrollbar para Chrome/Safari */
+      /* Webkit scrollbar para Chrome/Safari - SEMPRE VISÍVEL */
       .select2-results__options::-webkit-scrollbar {
         width: 8px !important;
+        display: block !important;
+        visibility: visible !important;
+      }
+
+      .select2-results__options {
+        overflow-y: scroll !important; /* Force scroll sempre visível */
       }
 
       .select2-results__options::-webkit-scrollbar-track {

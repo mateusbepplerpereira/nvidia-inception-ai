@@ -195,11 +195,73 @@ const ReportModal = ({
     }
   };
 
+  // Função para verificar se há seleções
+  const hasSelections = () => {
+    return reportFilters.sectors.length > 0 ||
+           reportFilters.technologies.length > 0 ||
+           reportFilters.countries.length > 0;
+  };
+
+  // Adicionar estilos do scrollbar via useEffect
+  useEffect(() => {
+    if (isOpen) {
+      const style = document.createElement('style');
+      style.textContent = `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #374151;
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #76B900;
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #5a8a00;
+        }
+        .select2-dropdown {
+          background-color: #1f2937 !important;
+          border: 1px solid #374151 !important;
+        }
+        .select2-dropdown .select2-results__option {
+          color: white !important;
+        }
+        .select2-dropdown .select2-results__option--highlighted {
+          background-color: #76B900 !important;
+          color: black !important;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator {
+          filter: invert(1);
+          cursor: pointer;
+        }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+          opacity: 0.5;
+        }
+        /* Padronizar inputs e selects com select2 */
+        input, select:not([multiple]) {
+          background-color: rgb(45 45 45 / 1) !important;
+          border: 1px solid #4A4A4A !important;
+        }
+        input:focus, select:not([multiple]):focus {
+          border-color: #76B900 !important;
+          box-shadow: 0 0 0 2px rgba(118, 185, 0, 0.2) !important;
+        }
+      `;
+      document.head.appendChild(style);
+      return () => {
+        document.head.removeChild(style);
+      };
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style={{marginTop: 0}}>
-      <div className="bg-nvidia-gray rounded-lg p-6 w-full max-w-4xl mx-4" style={{height: '90vh', display: 'flex', flexDirection: 'column'}}>
+      <div className="bg-nvidia-gray rounded-lg p-6 w-full max-w-xl mx-4" style={{height: '90vh', display: 'flex', flexDirection: 'column'}}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-white">{title}</h2>
           <button
@@ -212,66 +274,69 @@ const ReportModal = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-2">
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
           <div className="space-y-6">
-          <div>
-            <label className="block text-white text-sm font-medium mb-2">
-              Setores
-            </label>
-            <select
-              ref={sectorsSelectRef}
-              multiple
-              className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
-            >
-              {availableMetrics?.sectors?.map(sector => (
-                <option key={sector} value={sector}>{sector}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Setores
+              </label>
+              <select
+                ref={sectorsSelectRef}
+                multiple
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green focus:border-transparent"
+              >
+                {availableMetrics?.sectors?.map(sector => (
+                  <option key={sector} value={sector}>{sector}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Tecnologias
+              </label>
+              <select
+                ref={technologiesSelectRef}
+                multiple
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green focus:border-transparent"
+              >
+                {availableMetrics?.technologies?.map(tech => (
+                  <option key={tech} value={tech}>{tech}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-white text-sm font-medium mb-2">
-              Tecnologias de IA
-            </label>
-            <select
-              ref={technologiesSelectRef}
-              multiple
-              className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
-            >
-              {availableMetrics?.technologies?.map(tech => (
-                <option key={tech} value={tech}>{tech}</option>
-              ))}
-            </select>
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Países
+              </label>
+              <select
+                ref={countriesSelectRef}
+                multiple
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green focus:border-transparent"
+              >
+                {availableMetrics?.countries?.map(country => (
+                  <option key={country} value={country}>{country}</option>
+                ))}
+              </select>
+            </div>
 
-          <div>
-            <label className="block text-white text-sm font-medium mb-2">
-              Países
-            </label>
-            <select
-              ref={countriesSelectRef}
-              multiple
-              className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
-            >
-              {availableMetrics?.countries?.map(country => (
-                <option key={country} value={country}>{country}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-white text-sm font-medium mb-2">
-              Máximo de Startups
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="1000"
-              value={reportFilters.maxStartups}
-              onChange={(e) => setReportFilters(prev => ({ ...prev, maxStartups: parseInt(e.target.value) || 50 }))}
-              className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
-              placeholder="Ex: 50"
-            />
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Máximo de Startups
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={reportFilters.maxStartups}
+                onChange={(e) => setReportFilters(prev => ({ ...prev, maxStartups: parseInt(e.target.value) || 50 }))}
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green focus:border-transparent"
+                placeholder="Ex: 50"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -282,12 +347,11 @@ const ReportModal = ({
               <select
                 value={reportFilters.sortBy}
                 onChange={(e) => setReportFilters(prev => ({ ...prev, sortBy: e.target.value }))}
-                className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green focus:border-transparent"
               >
-                <option value="score">Score Total</option>
+                <option value="score">Potencial Parceria</option>
                 <option value="created_at">Data de Adição</option>
                 <option value="name">Nome</option>
-                <option value="funding">Funding Total</option>
               </select>
             </div>
 
@@ -298,7 +362,7 @@ const ReportModal = ({
               <select
                 value={reportFilters.sortOrder}
                 onChange={(e) => setReportFilters(prev => ({ ...prev, sortOrder: e.target.value }))}
-                className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green focus:border-transparent"
               >
                 <option value="desc">Decrescente</option>
                 <option value="asc">Crescente</option>
@@ -315,7 +379,7 @@ const ReportModal = ({
                 type="date"
                 value={reportFilters.startDate}
                 onChange={(e) => setReportFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green focus:border-transparent"
               />
             </div>
 
@@ -327,7 +391,7 @@ const ReportModal = ({
                 type="date"
                 value={reportFilters.endDate}
                 onChange={(e) => setReportFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2"
+                className="w-full bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-nvidia-green focus:border-transparent"
               />
             </div>
           </div>

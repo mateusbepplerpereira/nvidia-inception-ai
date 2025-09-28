@@ -18,6 +18,27 @@ function Dashboard() {
     highestScore: 0,
     lowestScore: 0
   });
+
+  // Custom tooltip component for pie charts
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{
+          backgroundColor: '#2D2D2D',
+          border: 'none',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          color: 'white',
+          fontSize: '14px'
+        }}>
+          <p style={{ color: 'white', margin: 0 }}>
+            {`${payload[0].name}: ${payload[0].value}`}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
   const [loading, setLoading] = useState(true);
   const [showReportModal, setShowReportModal] = useState(false);
   const [availableFilters, setAvailableFilters] = useState({
@@ -146,6 +167,7 @@ function Dashboard() {
 
   const COLORS = ['#76B900', '#4CAF50', '#8BC34A', '#CDDC39', '#FFC107'];
 
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -241,7 +263,7 @@ function Dashboard() {
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', border: 'none' }} />
+              <Tooltip content={<CustomTooltip />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -265,7 +287,7 @@ function Dashboard() {
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', border: 'none' }} />
+              <Tooltip content={<CustomTooltip />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
