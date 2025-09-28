@@ -12,3 +12,5 @@ beautifulsoup4==4.12.3
 langgraph==0.2.34
 langchain==0.3.1
 langchain-openai==0.2.1
+reportlab==4.0.7
+openpyxl==3.1.2

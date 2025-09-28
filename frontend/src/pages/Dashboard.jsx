@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { startupService, agentService } from '../services/api';
+import ReportModal from '../components/ReportModal';
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -17,11 +18,41 @@ function Dashboard() {
     highestScore: 0,
     lowestScore: 0
   });
+
+  // Custom tooltip component for pie charts
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{
+          backgroundColor: '#2D2D2D',
+          border: 'none',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          color: 'white',
+          fontSize: '14px'
+        }}>
+          <p style={{ color: 'white', margin: 0 }}>
+            {`${payload[0].name}: ${payload[0].value}`}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
   const [loading, setLoading] = useState(true);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [availableFilters, setAvailableFilters] = useState({
+    sectors: [],
+    technologies: [],
+    countries: []
+  });
+  // Modal gerenciado pelo componente
 
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  // Modal gerenciado pelo componente ReportModal
 
   const loadDashboardData = async () => {
     try {
@@ -34,7 +65,6 @@ function Dashboard() {
 
       // Process data for dashboard
       const totalStartups = startups.length;
-      const withVenture = startups.filter(s => s.has_venture_capital).length;
 
       // Calculate average scores
       // Use ranking data for top startups
@@ -103,6 +133,17 @@ function Dashboard() {
       // Get top sector
       const topSector = sectorDistribution[0]?.name || 'N/A';
 
+      // Extract unique values for filters
+      const sectors = [...new Set(startups.map(s => s.sector).filter(Boolean))];
+      const technologies = [...new Set(startups.flatMap(s => s.ai_technologies || []))];
+      const countries = [...new Set(startups.map(s => s.country).filter(Boolean))];
+
+      setAvailableFilters({
+        sectors: sectors.sort(),
+        technologies: technologies.sort(),
+        countries: countries.sort()
+      });
+
       setStats({
         totalStartups,
         topStartup,
@@ -123,7 +164,9 @@ function Dashboard() {
     }
   };
 
+
   const COLORS = ['#76B900', '#4CAF50', '#8BC34A', '#CDDC39', '#FFC107'];
+
 
   if (loading) {
     return (
@@ -137,13 +180,22 @@ function Dashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-        <button
-          onClick={loadDashboardData}
-          className="bg-nvidia-green text-nvidia-dark px-4 py-2 rounded-md hover:bg-green-600 transition-colors flex items-center space-x-2"
-        >
-          <ion-icon name="refresh-outline"></ion-icon>
-          <span>Atualizar</span>
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="bg-nvidia-green text-nvidia-dark px-4 py-2 rounded-md hover:bg-green-600 transition-colors flex items-center space-x-2"
+          >
+            <ion-icon name="document-text-outline"></ion-icon>
+            <span>Gerar Relatório</span>
+          </button>
+          <button
+            onClick={loadDashboardData}
+            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors flex items-center space-x-2"
+          >
+            <ion-icon name="refresh-outline"></ion-icon>
+            <span>Atualizar</span>
+          </button>
+        </div>
       </div>
 
       {/* Key Metrics */}
@@ -207,11 +259,11 @@ function Dashboard() {
                 fill="#8884d8"
                 dataKey="value"
               >
-                {stats.countryDistribution.map((entry, index) => (
+                {stats.countryDistribution.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', border: 'none' }} />
+              <Tooltip content={<CustomTooltip />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -231,11 +283,11 @@ function Dashboard() {
                 fill="#8884d8"
                 dataKey="value"
               >
-                {stats.sectorDistribution.map((entry, index) => (
+                {stats.sectorDistribution.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', border: 'none' }} />
+              <Tooltip content={<CustomTooltip />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -258,7 +310,7 @@ function Dashboard() {
               <YAxis stroke="#999" />
               <Tooltip contentStyle={{ backgroundColor: '#2D2D2D', border: 'none' }} />
               <Bar dataKey="count" fill="#76B900">
-                {stats.topTechnologies.map((entry, index) => (
+                {stats.topTechnologies.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Bar>
@@ -296,6 +348,14 @@ function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        availableMetrics={availableFilters}
+        title="Gerar Relatório de Startups"
+      />
     </div>
   );
 }

@@ -283,7 +283,7 @@ function StartupDetail() {
             <div className="text-sm text-gray-300 space-y-2">
               <p><strong>Como é calculada:</strong></p>
               <ul className="list-disc list-inside space-y-1 text-xs">
-                <li>Funding >$10M: 80-100 pontos</li>
+                <li>Funding &gt;$10M: 80-100 pontos</li>
                 <li>Funding $1-10M: 60-80 pontos</li>
                 <li>Funding &lt;$1M: 30-60 pontos</li>
                 <li>Investidores conhecidos: +20 pontos</li>
