@@ -64,7 +64,12 @@ async def generate_report(filters: ReportFilters, db: Session = Depends(get_db))
         xlsx_content = report_service.generate_startup_report(
             sectors=filters.sectors,
             technologies=filters.technologies,
-            max_startups=filters.max_startups
+            countries=filters.countries,
+            max_startups=filters.max_startups,
+            sort_by=filters.sort_by,
+            sort_order=filters.sort_order,
+            start_date=filters.start_date,
+            end_date=filters.end_date
         )
 
         return Response(

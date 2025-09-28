@@ -14,12 +14,17 @@ class ReportService:
 
     def generate_startup_report(self, sectors: Optional[List[str]] = None,
                               technologies: Optional[List[str]] = None,
-                              max_startups: int = 50) -> bytes:
+                              countries: Optional[List[str]] = None,
+                              max_startups: int = 50,
+                              sort_by: str = "score",
+                              sort_order: str = "desc",
+                              start_date: Optional[datetime] = None,
+                              end_date: Optional[datetime] = None) -> bytes:
         """
         Gera um relatório XLSX das startups baseado nos filtros
         """
         # Buscar startups com base nos filtros
-        startups = self._get_filtered_startups(sectors, technologies, max_startups)
+        startups = self._get_filtered_startups(sectors, technologies, countries, max_startups, sort_by, sort_order, start_date, end_date)
 
         # Criar workbook
         wb = Workbook()
@@ -68,9 +73,31 @@ class ReportService:
             ws[f'A{row}'].font = normal_font
             row += 1
 
+        if countries:
+            ws[f'A{row}'] = f"Países: {', '.join(countries)}"
+            ws[f'A{row}'].font = normal_font
+            row += 1
+
         ws[f'A{row}'] = f"Máximo de startups: {max_startups}"
         ws[f'A{row}'].font = normal_font
         row += 1
+
+        ws[f'A{row}'] = f"Ordenado por: {sort_by} ({sort_order})"
+        ws[f'A{row}'].font = normal_font
+        row += 1
+
+        if start_date or end_date:
+            date_filter = ""
+            if start_date:
+                date_filter += f"De: {start_date.strftime('%d/%m/%Y')}"
+            if end_date:
+                if date_filter:
+                    date_filter += f" até: {end_date.strftime('%d/%m/%Y')}"
+                else:
+                    date_filter += f"Até: {end_date.strftime('%d/%m/%Y')}"
+            ws[f'A{row}'] = f"Período: {date_filter}"
+            ws[f'A{row}'].font = normal_font
+            row += 1
 
         ws[f'A{row}'] = f"Total encontrado: {len(startups)}"
         ws[f'A{row}'].font = normal_font
@@ -137,7 +164,12 @@ class ReportService:
 
     def _get_filtered_startups(self, sectors: Optional[List[str]],
                              technologies: Optional[List[str]],
-                             max_startups: int) -> List[Startup]:
+                             countries: Optional[List[str]],
+                             max_startups: int,
+                             sort_by: str = "score",
+                             sort_order: str = "desc",
+                             start_date: Optional[datetime] = None,
+                             end_date: Optional[datetime] = None) -> List[Startup]:
         """
         Busca startups com base nos filtros fornecidos
         """
@@ -155,10 +187,44 @@ class ReportService:
                 tech_filters.append(Startup.ai_technologies.op('@>')([tech]))
             query = query.filter(or_(*tech_filters))
 
-        # Ordenar por score de métricas (se disponível)
-        query = query.outerjoin(StartupMetrics).order_by(
-            StartupMetrics.total_score.desc().nullslast(),
-            Startup.created_at.desc()
-        )
+        # Filtrar por países
+        if countries:
+            query = query.filter(Startup.country.in_(countries))
+
+        # Filtrar por data de criação
+        if start_date:
+            query = query.filter(Startup.created_at >= start_date)
+        if end_date:
+            query = query.filter(Startup.created_at <= end_date)
+
+        # Aplicar ordenação
+        query = query.outerjoin(StartupMetrics)
+
+        if sort_by == "score":
+            if sort_order == "asc":
+                query = query.order_by(StartupMetrics.total_score.asc().nullslast())
+            else:
+                query = query.order_by(StartupMetrics.total_score.desc().nullslast())
+        elif sort_by == "created_at":
+            if sort_order == "asc":
+                query = query.order_by(Startup.created_at.asc())
+            else:
+                query = query.order_by(Startup.created_at.desc())
+        elif sort_by == "name":
+            if sort_order == "asc":
+                query = query.order_by(Startup.name.asc())
+            else:
+                query = query.order_by(Startup.name.desc())
+        elif sort_by == "funding":
+            if sort_order == "asc":
+                query = query.order_by(Startup.total_funding.asc().nullslast())
+            else:
+                query = query.order_by(Startup.total_funding.desc().nullslast())
+        else:
+            # Default fallback
+            query = query.order_by(
+                StartupMetrics.total_score.desc().nullslast(),
+                Startup.created_at.desc()
+            )
 
         return query.limit(max_startups).all()

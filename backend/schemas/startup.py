@@ -84,4 +84,9 @@ class StartupResponse(StartupBase):
 class ReportFilters(BaseModel):
     sectors: Optional[List[str]] = []
     technologies: Optional[List[str]] = []
+    countries: Optional[List[str]] = []
     max_startups: int = 50
+    sort_by: str = "score"  # score, created_at, name, funding
+    sort_order: str = "desc"  # asc, desc
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
