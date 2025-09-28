@@ -98,6 +98,30 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
     db = next(get_db())
     service = AgentService(db)
 
+    # Se for do worker/scheduler, criar uma agent_task primeiro
+    agent_task_id = None
+    if from_worker:
+        from database.models import AgentTask
+        agent_task = AgentTask(
+            task_type="startup_discovery",
+            status="running",
+            input_data={
+                "country": country,
+                "sector": sector,
+                "limit": limit,
+                "search_strategy": search_strategy,
+                "from_scheduler": True,
+                "job_id": job_id
+            }
+        )
+        db.add(agent_task)
+        db.commit()
+        db.refresh(agent_task)
+        agent_task_id = agent_task.id
+        task_id = agent_task.id  # Usar o ID da agent_task
+    else:
+        agent_task_id = task_id
+
     # Criar log de início da tarefa
     from database.models import TaskLog
     from datetime import datetime
@@ -109,15 +133,15 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
         status="started",
         message=f"Iniciando descoberta de startups para {country}" + (f" - Setor: {sector}" if sector else ""),
         scheduled_job_id=job_id if from_worker else None,
-        agent_task_id=task_id if not from_worker and task_id > 0 else None,
+        agent_task_id=agent_task_id,
         started_at=start_time
     )
     db.add(task_log)
     db.commit()
     db.refresh(task_log)
 
-    # Atualizar mensagem com ID da task
-    task_log.message = f"Task {task_log.id}: {task_log.message}"
+    # Atualizar mensagem com ID da task agent
+    task_log.message = f"Task #{agent_task_id}: {task_log.message}"
     db.commit()
 
     try:
@@ -140,9 +164,11 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             search_strategy=search_strategy
         )
 
-        # Save results
-        service.update_task(task_id, "completed", result)
+        # Save results (apenas para tasks manuais, não do scheduler)
+        if not from_worker:
+            service.update_task(task_id, "completed", result)
         print(f"Orquestração concluída: {result.get('status')}")
+        print(f"DEBUG - Result status type: {type(result.get('status'))}, value: '{result.get('status')}'")
 
         if result.get("status") == "success":
             # Salvar startups válidas
@@ -179,20 +205,49 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             execution_time = (end_time - start_time).total_seconds()
 
             task_log.status = "completed"
-            task_log.message = f"Task {task_log.id}: Orquestração concluída com sucesso: {valid_count} startups válidas, {invalid_count} inválidas"
+            task_log.message = f"Task #{agent_task_id}: Orquestração concluída com sucesso: {valid_count} startups válidas, {invalid_count} inválidas"
             task_log.completed_at = end_time
             task_log.execution_time = execution_time
+
+            # Atualizar agent_task status para completed se existir
+            if from_worker and agent_task_id:
+                from database.models import AgentTask
+                agent_task = db.query(AgentTask).filter(AgentTask.id == agent_task_id).first()
+                if agent_task:
+                    agent_task.status = "completed"
+                    agent_task.output_data = {
+                        "valid_startups": valid_count,
+                        "invalid_startups": invalid_count,
+                        "execution_time": execution_time
+                    }
+                    agent_task.completed_at = end_time
+
+            # Commit das alterações
+            db.commit()
 
             # Criar notificação de sucesso
             from database.models import Notification
             notification = Notification(
                 title="Descoberta de Startups Concluída",
-                message=f"Task {task_log.id}: Encontradas {valid_count} startups válidas para {country}" + (f" no setor {sector}" if sector else ""),
+                message=f"Task #{agent_task_id}: Encontradas {valid_count} startups válidas para {country}" + (f" no setor {sector}" if sector else ""),
                 type="success",
-                task_id=task_id if not from_worker and task_id > 0 else None,
+                task_id=agent_task_id,
                 job_id=job_id if from_worker else None
             )
             db.add(notification)
+            db.commit()
+
+            # Envia notificação via WebSocket
+            from services.notification_service import notification_service
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(notification_service.send_notification(notification))
+                else:
+                    loop.run_until_complete(notification_service.send_notification(notification))
+            except:
+                pass  # Se WebSocket falhar, não quebrar a execução
 
             print(f"{valid_count} startups válidas salvas")
             print(f"{metrics_count} métricas calculadas")
@@ -204,25 +259,89 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             execution_time = (end_time - start_time).total_seconds()
 
             task_log.status = "failed"
-            task_log.message = f"Task {task_log.id}: Orquestração falhou: {result.get('error', 'Erro desconhecido')}"
+            task_log.message = f"Task #{agent_task_id}: Orquestração falhou: {result.get('error', 'Erro desconhecido')}"
             task_log.completed_at = end_time
             task_log.execution_time = execution_time
+
+            # Atualizar agent_task status para failed se existir
+            if from_worker and agent_task_id:
+                from database.models import AgentTask
+                agent_task = db.query(AgentTask).filter(AgentTask.id == agent_task_id).first()
+                if agent_task:
+                    agent_task.status = "failed"
+                    agent_task.error_message = result.get('error', 'Erro desconhecido')
+                    agent_task.completed_at = end_time
+
+            # Commit das alterações
+            db.commit()
 
             # Criar notificação de erro
             from database.models import Notification
             notification = Notification(
                 title="Erro na Descoberta de Startups",
-                message=f"Task {task_log.id}: Falha na descoberta para {country}: {result.get('error', 'Erro desconhecido')}",
+                message=f"Task #{agent_task_id}: Falha na descoberta para {country}: {result.get('error', 'Erro desconhecido')}",
                 type="error",
-                task_id=task_id if not from_worker and task_id > 0 else None,
+                task_id=agent_task_id,
                 job_id=job_id if from_worker else None
             )
             db.add(notification)
+            db.commit()
+
+            # Envia notificação via WebSocket
+            from services.notification_service import notification_service
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(notification_service.send_notification(notification))
+                else:
+                    loop.run_until_complete(notification_service.send_notification(notification))
+            except:
+                pass  # Se WebSocket falhar, não quebrar a execução
 
     except Exception as e:
         error_msg = f"Erro na orquestração: {str(e)}"
-        print(f"{error_msg}")
-        service.update_task(task_id, "failed", error_message=error_msg)
+        print(f"Erro na task {agent_task_id}: {error_msg}")
+
+        # Atualizar logs
+        end_time = datetime.now()
+        execution_time = (end_time - start_time).total_seconds()
+
+        task_log.status = "failed"
+        task_log.message = f"Task #{agent_task_id}: Erro na orquestração: {str(e)}"
+        task_log.completed_at = end_time
+        task_log.execution_time = execution_time
+
+        # Atualizar agent_task se existir
+        if from_worker and agent_task_id:
+            from database.models import AgentTask
+            agent_task = db.query(AgentTask).filter(AgentTask.id == agent_task_id).first()
+            if agent_task:
+                agent_task.status = "failed"
+                agent_task.error_message = str(e)
+                agent_task.completed_at = end_time
+
+        db.commit()
+
+        # Criar notificação de erro
+        from database.models import Notification
+        notification = Notification(
+            title="Erro na Descoberta de Startups",
+            message=f"Task #{agent_task_id}: Erro na orquestração: {str(e)}",
+            type="error",
+            task_id=agent_task_id,
+            job_id=job_id if from_worker else None
+        )
+        db.add(notification)
+        db.commit()
+
+        # Envia notificação via WebSocket
+        from services.notification_service import notification_service
+        import asyncio
+        try:
+            asyncio.create_task(notification_service.send_notification(notification))
+        except:
+            pass  # Se WebSocket falhar, não quebrar a execução
 
         # Atualizar log de erro
         end_time = datetime.now()

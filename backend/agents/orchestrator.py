@@ -136,13 +136,16 @@ class StartupOrchestrator:
             if state.get('sector'):
                 search_query = f"AI startups {state['sector']} {state.get('country', 'Brazil')} venture capital funding 2024"
                 sector_constraint = f"""
-        RESTRIÇÃO OBRIGATÓRIA DE SETOR:
-        - APENAS startups do setor "{state['sector']}"
-        - NÃO incluir startups de outros setores
-        - Se for "fintech", APENAS fintechs
-        - Se for "healthtech", APENAS healthtechs
-        - Se for "agtech", APENAS agtechs
-        - REJEITAR qualquer startup fora do setor especificado
+        RESTRIÇÃO OBRIGATÓRIA DE SETOR - CUMPRIMENTO OBRIGATÓRIO:
+        - EXCLUSIVAMENTE startups do setor "{state['sector']}"
+        - ZERO TOLERÂNCIA para outros setores
+        - Exemplos CORRETOS por setor:
+          * "agtech"/"agro": startups de agricultura, agronomia, pecuária, supply chain rural
+          * "fintech": startups de serviços financeiros, pagamentos, crédito, bancos digitais
+          * "healthtech": startups de saúde, medicina, dispositivos médicos, telemedicina
+        - SE uma startup for de "fintech" (pagamentos, crédito) e você está buscando "agtech", REJEITÁ-LA COMPLETAMENTE
+        - VALIDAR: o core business da startup deve ser 100% do setor "{state['sector']}"
+        - NO CAMPO "sector" do JSON, usar EXATAMENTE: "{state['sector']}"
         """
             else:
                 search_query = f"AI startups {state.get('country', 'Brazil')} venture capital funding 2024"
@@ -215,6 +218,12 @@ class StartupOrchestrator:
             }}
           }}
         ]
+
+        VALIDAÇÃO FINAL OBRIGATÓRIA:
+        - Antes de retornar o JSON, REVISAR cada startup
+        - CONFIRMAR que o setor de cada startup é EXATAMENTE "{state.get('sector', 'AI/Technology')}"
+        - REMOVER qualquer startup que não seja 100% do setor especificado
+        - Se nenhuma startup for do setor correto, retornar array vazio []
         """
 
         try:
@@ -493,7 +502,7 @@ class StartupOrchestrator:
         validated_startups = []
 
         for startup in state.get("discovered_startups", []):
-            validation_result = self._validate_startup_thoroughly(startup)
+            validation_result = self._validate_startup_thoroughly(startup, state)
 
             # Se website não é válido, marcar como "Não encontrado"
             if not validation_result.get("website_valid", True):
@@ -570,10 +579,32 @@ class StartupOrchestrator:
 
         return state
 
-    def _validate_startup_thoroughly(self, startup: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_startup_thoroughly(self, startup: Dict[str, Any], state: OrchestrationState = None) -> Dict[str, Any]:
         """Validação rigorosa de startup com scoring detalhado"""
         issues = []
         validation_scores = {}
+
+        # VALIDAÇÃO DE SETOR OBRIGATÓRIA
+        if state and state.get('sector'):
+            expected_sector = state.get('sector').lower()
+            startup_sector = startup.get('sector', '').lower()
+
+            # Mapeamento de setores similares
+            sector_mappings = {
+                'agro': ['agtech', 'agro', 'agricultura', 'agronomia'],
+                'agtech': ['agtech', 'agro', 'agricultura', 'agronomia'],
+                'fintech': ['fintech', 'financas', 'finance'],
+                'healthtech': ['healthtech', 'saude', 'health', 'medicina'],
+                'edtech': ['edtech', 'educacao', 'education'],
+            }
+
+            valid_sectors = sector_mappings.get(expected_sector, [expected_sector])
+            sector_match = any(valid in startup_sector for valid in valid_sectors)
+
+            validation_scores["sector_score"] = 100 if sector_match else 0
+            if not sector_match:
+                issues.append(f"Setor incorreto: esperado '{state.get('sector')}', encontrado '{startup.get('sector')}'")
+                logger.warning(f"SETOR INCORRETO: {startup.get('name')} é '{startup.get('sector')}' mas esperava-se '{state.get('sector')}'")
 
         # Validar website
         website_valid = self._validate_website(startup.get("website"))
@@ -600,7 +631,9 @@ class StartupOrchestrator:
             startup.get("ai_technologies")
         )
 
-        is_valid = has_basic_data  # Website inacessível não invalida a startup
+        # Startup é válida apenas se tem dados básicos E setor correto
+        has_correct_sector = validation_scores.get("sector_score", 100) > 0  # Se não há validação de setor, considera válido
+        is_valid = has_basic_data and has_correct_sector
 
         return {
             "is_valid": is_valid,

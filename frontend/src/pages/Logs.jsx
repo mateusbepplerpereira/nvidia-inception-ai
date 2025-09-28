@@ -81,11 +81,15 @@ function Logs() {
 
     if (window.confirm(confirmMessage)) {
       try {
-        await logsService.clearLogs(status, olderThanDays);
+        console.log('Iniciando limpeza de logs...');
+        const result = await logsService.clearLogs(status, olderThanDays);
+        console.log('Resultado da limpeza:', result);
+        alert(`${result.removed_count || 0} logs removidos com sucesso!`);
         loadLogs();
         loadStats();
       } catch (error) {
         console.error('Erro ao limpar logs:', error);
+        alert(`Erro ao limpar logs: ${error.message}`);
       }
     }
   };
@@ -276,7 +280,7 @@ function Logs() {
                   <tr key={log.id} className="hover:bg-nvidia-lightGray transition-colors">
                     <td className="px-4 py-4">
                       <span className="text-nvidia-green font-mono text-sm font-bold">
-                        #{log.id}
+                        #{log.agent_task_id || 'N/A'}
                       </span>
                     </td>
                     <td className="px-4 py-4">

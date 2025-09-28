@@ -86,19 +86,6 @@ class SchedulerService:
             if not job or not job.is_active:
                 return
 
-            # Cria log de início
-            task_log = TaskLog(
-                task_name=job.name,
-                task_type=job.task_type,
-                status="started",
-                message=f"Iniciando execução do job: {job.name}",
-                scheduled_job_id=job.id,
-                started_at=start_time
-            )
-            db.add(task_log)
-            db.commit()
-            db.refresh(task_log)
-
             logger.info(f"Iniciando execução do job: {job.name}")
 
             # Executa a tarefa baseada no tipo
@@ -108,12 +95,6 @@ class SchedulerService:
 
             end_time = datetime.now()
             execution_time = (end_time - start_time).total_seconds()
-
-            # Atualiza log de sucesso
-            task_log.status = "completed"
-            task_log.message = f"Job '{job.name}' executado com sucesso"
-            task_log.completed_at = end_time
-            task_log.execution_time = execution_time
 
             # Atualiza job
             job.last_run = end_time
@@ -126,12 +107,6 @@ class SchedulerService:
         except Exception as e:
             end_time = datetime.now()
             execution_time = (end_time - start_time).total_seconds()
-
-            # Atualiza log de erro
-            task_log.status = "failed"
-            task_log.message = f"Erro na execução do job: {str(e)}"
-            task_log.completed_at = end_time
-            task_log.execution_time = execution_time
 
             db.commit()
 
