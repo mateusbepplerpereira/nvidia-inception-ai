@@ -138,14 +138,18 @@ class StartupOrchestrator:
             if state.get('sector'):
                 # Query muito específica para país e setor
                 country = state.get('country', 'Brazil')
-                search_query = f"startups brasileiras {state['sector']} {country} fundadas Brasil venture capital funding AI artificial intelligence"
+                if country.lower() in ['brazil', 'brasil']:
+                    search_query = f"startups brasileiras {state['sector']} Brasil sede Brazilian companies AI artificial intelligence venture capital funding founded Brazil"
+                else:
+                    search_query = f"startups {state['sector']} {country} AI artificial intelligence venture capital funding founded {country}"
                 sector_constraint = f"""
         RESTRIÇÕES ABSOLUTA DE PAÍS E SETOR - CUMPRIMENTO OBRIGATÓRIO:
 
         PAÍS: EXCLUSIVAMENTE startups do país "{state.get('country', 'Brazil')}"
         - Se busca "Brazil" → APENAS startups BRASILEIRAS fundadas no Brasil
-        - Se encontrar startup da Argentina, Chile, etc. → REJEITÁ-LA COMPLETAMENTE
-        - VALIDAR: a startup deve ser FUNDADA e SEDIADA no país especificado
+        - Se encontrar startup da Argentina, Chile, México, etc. → REJEITÁ-LA COMPLETAMENTE
+        - VALIDAR na WebSearch: "startup [nome] brasil sede fundada"
+        - NO CAMPO "country" usar EXATAMENTE: "{state.get('country', 'Brazil')}"
 
         SETOR: EXCLUSIVAMENTE startups do setor "{state['sector']}"
         - ZERO TOLERÂNCIA para outros setores
@@ -191,13 +195,16 @@ class StartupOrchestrator:
         {sector_constraint}
         {exclusion_context}
 
-        OBRIGATÓRIO - WEBSITE OFICIAL CORRETO:
-        - BUSQUE na web: "nome_startup site oficial" ou "nome_startup website"
-        - CONFIRME o domínio correto nas matérias e fontes confiáveis
-        - Exemplos reais: "Creditec" → site é "https://soucreditec.com.br" (não creditec.com.br)
-        - Exemplo: "Juvo" → site é "https://www.juvocredito.com.br" (não juvo.com.br)
-        - SEMPRE verifique múltiplas fontes para confirmar o domínio correto
-        - Se não encontrar o site oficial exato, NÃO INCLUA a startup
+        OBRIGATÓRIO - WEBSITE OFICIAL REAL VIA WEBSEARCH:
+        - JAMAIS INVENTAR URLs ou adicionar .com.br automaticamente
+        - USAR WebSearch para buscar: "[nome_startup] site oficial website url"
+        - VERIFICAR em múltiplas fontes: matérias, perfis LinkedIn, diretórios
+        - CONFIRMAR URL exato encontrado nas buscas
+        - Exemplos REAIS encontrados via busca:
+          * "Creditec" → site REAL é "https://soucreditec.com.br" (não creditec.com.br)
+          * "Crop Sense AI" → site REAL é "https://crop-sense-ai.vercel.app/" (não cropsenseai.com.br)
+        - Se WebSearch não encontrar URL oficial → usar "Não encontrado"
+        - ZERO TOLERÂNCIA para URLs inventadas ou chutadas
 
         Após a busca web, extraia APENAS startups reais com:
         1. Nome confirmado em fonte confiável
@@ -287,7 +294,7 @@ class StartupOrchestrator:
 
         ETAPA 3 - Formatação Final:
         - Campo 'sector': usar EXATAMENTE "{state.get('sector', 'AI/Technology')}"
-        - Campo 'description': descrever APENAS a startup mencionada no campo 'name'
+        - Campo 'description': SEMPRE em português brasileiro (pt-BR), descrever APENAS a startup mencionada no campo 'name'
         - Campo 'ai_technologies': APENAS em inglês, tecnologias específicas
         """
 
