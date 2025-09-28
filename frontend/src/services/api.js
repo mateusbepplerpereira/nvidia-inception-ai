@@ -69,4 +69,101 @@ export const reportService = {
   },
 };
 
+export const jobsService = {
+  async getJobs(isActive = null) {
+    const params = isActive !== null ? { is_active: isActive } : {};
+    const response = await api.get('/jobs', { params });
+    return response.data;
+  },
+
+  async getJob(id) {
+    const response = await api.get(`/jobs/${id}`);
+    return response.data;
+  },
+
+  async createJob(data) {
+    const response = await api.post('/jobs', data);
+    return response.data;
+  },
+
+  async updateJob(id, data) {
+    const response = await api.put(`/jobs/${id}`, data);
+    return response.data;
+  },
+
+  async deleteJob(id) {
+    const response = await api.delete(`/jobs/${id}`);
+    return response.data;
+  },
+
+  async toggleJob(id) {
+    const response = await api.post(`/jobs/${id}/toggle`);
+    return response.data;
+  },
+};
+
+export const notificationsService = {
+  async getNotifications(limit = 50, offset = 0) {
+    const response = await api.get('/notifications', {
+      params: { limit, offset }
+    });
+    return response.data;
+  },
+
+  async getUnreadCount() {
+    const response = await api.get('/notifications/unread-count');
+    return response.data;
+  },
+
+  async markAsRead(id) {
+    const response = await api.put(`/notifications/${id}/read`);
+    return response.data;
+  },
+
+  async markAllAsRead() {
+    const response = await api.put('/notifications/mark-all-read');
+    return response.data;
+  },
+
+  async deleteNotification(id) {
+    const response = await api.delete(`/notifications/${id}`);
+    return response.data;
+  },
+};
+
+export const logsService = {
+  async getLogs(limit = 50, offset = 0, status = null, taskType = null) {
+    const params = { limit, offset };
+    if (status) params.status = status;
+    if (taskType) params.task_type = taskType;
+
+    const response = await api.get('/logs', { params });
+    return response.data;
+  },
+
+  async getLogsStats() {
+    const response = await api.get('/logs/stats');
+    return response.data;
+  },
+
+  async getLog(id) {
+    const response = await api.get(`/logs/${id}`);
+    return response.data;
+  },
+
+  async deleteLog(id) {
+    const response = await api.delete(`/logs/${id}`);
+    return response.data;
+  },
+
+  async clearLogs(status = null, olderThanDays = null) {
+    const params = {};
+    if (status) params.status = status;
+    if (olderThanDays) params.older_than_days = olderThanDays;
+
+    const response = await api.delete('/logs', { params });
+    return response.data;
+  },
+};
+
 export default api;

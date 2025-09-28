@@ -18,9 +18,19 @@ async def run_startup_pipeline(
     """Rota unificada para orquestração completa: Discovery → Validation → Metrics"""
     service = AgentService(db)
 
+    # Se a requisição vem do worker (job agendado), tratar de forma especial
+    if request.from_worker and request.job_id:
+        # Lógica separada para execução via worker (futuramente para e-mail)
+        task_type_suffix = "_worker"
+        message_prefix = "Worker job"
+    else:
+        # Execução manual normal
+        task_type_suffix = ""
+        message_prefix = "Manual"
+
     # Create task record
     task = service.create_task(
-        task_type="orchestration",
+        task_type=f"orchestration{task_type_suffix}",
         agent_name="LangGraphOrchestrator",
         input_data=request.dict()
     )
@@ -32,13 +42,16 @@ async def run_startup_pipeline(
         task.id,
         request.country,
         request.sector,
-        getattr(request, 'limit', 5)
+        getattr(request, 'limit', 5),
+        request.from_worker,
+        request.job_id,
+        getattr(request, 'search_strategy', 'specific')
     )
 
     return AgentTaskResponse(
         task_id=task.id,
         status="pending",
-        message=f"Orchestration pipeline queued (queue size: {task_manager.get_queue_size()})"
+        message=f"{message_prefix} orchestration pipeline queued (queue size: {task_manager.get_queue_size()})"
     )
 
 # Rotas antigas removidas - agora tudo é feito via orquestração unificada
@@ -49,7 +62,38 @@ async def get_task_status(task_id: int, db: Session = Depends(get_db)):
     task = service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+
+    # Filtrar output_data para remover informações sensíveis
+    filtered_output = None
+    if task.output_data:
+        filtered_output = {
+            "status": task.output_data.get("status"),
+            "total_tokens": task.output_data.get("total_tokens", 0),
+            "execution_time": task.output_data.get("execution_time", 0),
+            "pipeline_summary": {
+                "discovery_count": len(task.output_data.get("results", {}).get("startup_metrics", [])),
+                "invalid_count": len(task.output_data.get("results", {}).get("invalid_startups", [])),
+                "success": task.output_data.get("status") == "success"
+            }
+        }
+
+        # Adicionar erros se houver
+        if task.output_data.get("errors"):
+            filtered_output["errors"] = task.output_data.get("errors")
+
+    # Retornar task sem dados sensíveis
+    return {
+        "id": task.id,
+        "task_type": task.task_type,
+        "status": task.status,
+        "agent_name": task.agent_name,
+        "input_data": task.input_data,
+        "output_data": filtered_output,
+        "error_message": task.error_message,
+        "started_at": task.started_at,
+        "completed_at": task.completed_at,
+        "created_at": task.created_at
+    }
 
 @router.get("/queue/status")
 async def get_queue_status():
@@ -62,21 +106,24 @@ async def get_queue_status():
 
 @router.get("/metrics/ranking")
 async def get_startup_ranking(
-    limit: int = 20,
+    limit: int = 200,  # Aumentar limite para incluir todas
     db: Session = Depends(get_db)
 ):
-    """Retorna ranking de startups ordenadas por score total"""
+    """Retorna ranking de startups ordenadas por score total (inclui startups sem métricas)"""
 
-    # Query para buscar startups com métricas ordenadas por total_score
-    startups_with_metrics = db.query(models.Startup, models.StartupMetrics)\
-        .join(models.StartupMetrics, models.Startup.id == models.StartupMetrics.startup_id)\
-        .order_by(models.StartupMetrics.total_score.desc())\
+    # Query para buscar TODAS as startups com LEFT JOIN para incluir as sem métricas
+    all_startups = db.query(models.Startup, models.StartupMetrics)\
+        .outerjoin(models.StartupMetrics, models.Startup.id == models.StartupMetrics.startup_id)\
+        .order_by(
+            models.StartupMetrics.total_score.desc().nullslast(),  # Métricas primeiro, nulls por último
+            models.Startup.created_at.desc()  # Para startups sem métricas, ordenar por data
+        )\
         .limit(limit)\
         .all()
 
     ranking = []
-    for startup, metrics in startups_with_metrics:
-        ranking.append({
+    for startup, metrics in all_startups:
+        startup_data = {
             "rank": len(ranking) + 1,
             "startup": {
                 "id": startup.id,
@@ -84,21 +131,34 @@ async def get_startup_ranking(
                 "website": startup.website,
                 "sector": startup.sector,
                 "last_funding_amount": startup.last_funding_amount
-            },
-            "metrics": {
+            }
+        }
+
+        # Adicionar métricas se existirem
+        if metrics:
+            startup_data["metrics"] = {
                 "market_demand_score": metrics.market_demand_score,
                 "technical_level_score": metrics.technical_level_score,
                 "partnership_potential_score": metrics.partnership_potential_score,
                 "total_score": metrics.total_score,
                 "analysis_date": metrics.analysis_date
             }
-        })
+        else:
+            # Startup sem métricas - retornar None para que o frontend saiba
+            startup_data["metrics"] = None
+
+        ranking.append(startup_data)
+
+    # Estatísticas apenas das startups com métricas
+    with_metrics = [r for r in ranking if r["metrics"] is not None]
 
     return {
         "ranking": ranking,
-        "total_analyzed": len(ranking),
-        "highest_score": ranking[0]["metrics"]["total_score"] if ranking else 0,
-        "lowest_score": ranking[-1]["metrics"]["total_score"] if ranking else 0
+        "total_startups": len(ranking),
+        "total_analyzed": len(with_metrics),
+        "total_without_metrics": len(ranking) - len(with_metrics),
+        "highest_score": with_metrics[0]["metrics"]["total_score"] if with_metrics else 0,
+        "lowest_score": with_metrics[-1]["metrics"]["total_score"] if with_metrics else 0
     }
 
 @router.get("/invalid/analysis")

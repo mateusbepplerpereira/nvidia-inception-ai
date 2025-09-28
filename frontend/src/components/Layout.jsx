@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import NotificationDropdown from './NotificationDropdown';
 
 function Layout() {
   return (
@@ -34,15 +35,29 @@ function Layout() {
                   <ion-icon name="business-outline" className="mr-1"></ion-icon>
                   Startups
                 </NavLink>
+                <NavLink
+                  to="/logs"
+                  className={({ isActive }) =>
+                    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-nvidia-green text-nvidia-dark'
+                        : 'text-gray-300 hover:bg-nvidia-lightGray hover:text-white'
+                    }`
+                  }
+                >
+                  <ion-icon name="document-text-outline" className="mr-1"></ion-icon>
+                  Logs
+                </NavLink>
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <button className="text-gray-300 hover:text-white">
-                <ion-icon name="notifications-outline" size="large"></ion-icon>
-              </button>
-              <button className="text-gray-300 hover:text-white">
+              <NotificationDropdown />
+              <NavLink
+                to="/settings"
+                className="text-gray-300 hover:text-white"
+              >
                 <ion-icon name="settings-outline" size="large"></ion-icon>
-              </button>
+              </NavLink>
             </div>
           </div>
         </div>

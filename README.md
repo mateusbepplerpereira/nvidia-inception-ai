@@ -149,7 +149,7 @@ startups 1:N analysis
 startups 1:N leadership
 ```
 
-### 🔍 Debug com Adminer:
+### Debug com Adminer:
 Acesse http://localhost:8080 e use as credenciais:
 - **Sistema**: PostgreSQL
 - **Servidor**: postgres
