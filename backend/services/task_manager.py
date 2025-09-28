@@ -91,12 +91,34 @@ class TaskManager:
 task_manager = TaskManager()
 
 # Função para executar orquestração completa
-def process_orchestration_task(task_id: int, country: str, sector: str, limit: int = 5):
+def process_orchestration_task(task_id: int, country: str, sector: str, limit: int = 5, from_worker: bool = False, job_id: int = None, search_strategy: str = "specific"):
     """Processa uma task de orquestração completa (Discovery → Validation → Metrics)"""
 
     # Get database session
     db = next(get_db())
     service = AgentService(db)
+
+    # Criar log de início da tarefa
+    from database.models import TaskLog
+    from datetime import datetime
+    start_time = datetime.now()
+
+    task_log = TaskLog(
+        task_name=f"Orquestração de Startups - {country}",
+        task_type="startup_discovery",
+        status="started",
+        message=f"Iniciando descoberta de startups para {country}" + (f" - Setor: {sector}" if sector else ""),
+        scheduled_job_id=job_id if from_worker else None,
+        agent_task_id=task_id if not from_worker and task_id > 0 else None,
+        started_at=start_time
+    )
+    db.add(task_log)
+    db.commit()
+    db.refresh(task_log)
+
+    # Atualizar mensagem com ID da task
+    task_log.message = f"Task {task_log.id}: {task_log.message}"
+    db.commit()
 
     try:
         # Update task to running
@@ -114,7 +136,8 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             sector=sector,
             limit=limit,
             existing_valid=existing_valid,
-            existing_invalid=existing_invalid
+            existing_invalid=existing_invalid,
+            search_strategy=search_strategy
         )
 
         # Save results
@@ -147,19 +170,101 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             for invalid_startup in result.get("results", {}).get("invalid_startups", []):
                 try:
                     service.save_invalid_startup(invalid_startup)
+                    invalid_count += 1
                 except Exception as e:
                     print(f"Erro ao salvar startup inválida {invalid_startup.get('name')}: {e}")
 
+            # Atualizar log de sucesso
+            end_time = datetime.now()
+            execution_time = (end_time - start_time).total_seconds()
+
+            task_log.status = "completed"
+            task_log.message = f"Task {task_log.id}: Orquestração concluída com sucesso: {valid_count} startups válidas, {invalid_count} inválidas"
+            task_log.completed_at = end_time
+            task_log.execution_time = execution_time
+
+            # Criar notificação de sucesso
+            from database.models import Notification
+            notification = Notification(
+                title="Descoberta de Startups Concluída",
+                message=f"Task {task_log.id}: Encontradas {valid_count} startups válidas para {country}" + (f" no setor {sector}" if sector else ""),
+                type="success",
+                task_id=task_id if not from_worker and task_id > 0 else None,
+                job_id=job_id if from_worker else None
+            )
+            db.add(notification)
+
             print(f"{valid_count} startups válidas salvas")
             print(f"{metrics_count} métricas calculadas")
-            print(f"{result.get('results', {}).get('invalid_count', 0)} startups inválidas")
+            print(f"{invalid_count} startups inválidas")
+
+        else:
+            # Atualizar log de erro
+            end_time = datetime.now()
+            execution_time = (end_time - start_time).total_seconds()
+
+            task_log.status = "failed"
+            task_log.message = f"Task {task_log.id}: Orquestração falhou: {result.get('error', 'Erro desconhecido')}"
+            task_log.completed_at = end_time
+            task_log.execution_time = execution_time
+
+            # Criar notificação de erro
+            from database.models import Notification
+            notification = Notification(
+                title="Erro na Descoberta de Startups",
+                message=f"Task {task_log.id}: Falha na descoberta para {country}: {result.get('error', 'Erro desconhecido')}",
+                type="error",
+                task_id=task_id if not from_worker and task_id > 0 else None,
+                job_id=job_id if from_worker else None
+            )
+            db.add(notification)
 
     except Exception as e:
         error_msg = f"Erro na orquestração: {str(e)}"
         print(f"{error_msg}")
         service.update_task(task_id, "failed", error_message=error_msg)
+
+        # Atualizar log de erro
+        end_time = datetime.now()
+        execution_time = (end_time - start_time).total_seconds()
+
+        task_log.status = "failed"
+        task_log.message = error_msg
+        task_log.completed_at = end_time
+        task_log.execution_time = execution_time
+
+        # Criar notificação de erro
+        from database.models import Notification
+        notification = Notification(
+            title="Erro na Descoberta de Startups",
+            message=f"Falha na descoberta para {country}: {str(e)}",
+            type="error",
+            task_id=task_id,
+            job_id=job_id if from_worker else None
+        )
+        db.add(notification)
+
     finally:
-        db.close()
+        # Salvar todas as alterações e enviar notificação via WebSocket
+        try:
+            db.commit()
+
+            # Enviar notificação via WebSocket se houver uma
+            if 'notification' in locals():
+                try:
+                    from services.notification_service import notification_service
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(notification_service.send_notification(notification))
+                    loop.close()
+                except Exception as ws_error:
+                    print(f"Erro ao enviar notificação via WebSocket: {ws_error}")
+
+        except Exception as e:
+            print(f"Erro ao salvar logs/notificações: {e}")
+        finally:
+            db.close()
 
 # Auto-start worker when module is imported
 if not task_manager.is_worker_running():

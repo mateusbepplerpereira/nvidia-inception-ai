@@ -104,3 +104,53 @@ class AgentTask(Base):
     started_at = Column(DateTime(timezone=True))
     completed_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ScheduledJob(Base):
+    __tablename__ = "scheduled_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    task_type = Column(String(100), nullable=False)  # "startup_discovery"
+    interval_value = Column(Integer, nullable=False)  # número
+    interval_unit = Column(String(20), nullable=False)  # "minutes", "hours", "days", "weeks", "months"
+
+    # Parâmetros configuráveis da task
+    task_config = Column(JSON)  # {"country": "Brazil", "sector": "FinTech", "limit": 10, "search_strategy": "specific"}
+
+    is_active = Column(Boolean, default=True)
+    last_run = Column(DateTime(timezone=True))
+    next_run = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    task_logs = relationship("TaskLog", back_populates="scheduled_job")
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(String(50), default="info")  # "success", "error", "info", "warning"
+    is_read = Column(Boolean, default=False)
+    task_id = Column(Integer, ForeignKey("agent_tasks.id"), nullable=True)
+    job_id = Column(Integer, ForeignKey("scheduled_jobs.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class TaskLog(Base):
+    __tablename__ = "task_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_name = Column(String(255), nullable=False)
+    task_type = Column(String(100), nullable=False)
+    status = Column(String(50), nullable=False)  # "started", "completed", "failed"
+    message = Column(Text)
+    execution_time = Column(Float)  # em segundos
+    scheduled_job_id = Column(Integer, ForeignKey("scheduled_jobs.id"), nullable=True)
+    agent_task_id = Column(Integer, ForeignKey("agent_tasks.id"), nullable=True)
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    scheduled_job = relationship("ScheduledJob", back_populates="task_logs")

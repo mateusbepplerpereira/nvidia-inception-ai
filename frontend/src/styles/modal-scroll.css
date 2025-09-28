@@ -1,0 +1,35 @@
+/* Modern green scrollbar for modal content */
+
+/* WebKit scrollbar (Chrome, Safari, Edge) */
+.modal-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-scroll::-webkit-scrollbar-thumb {
+  background: #76B900;
+  border-radius: 3px;
+}
+
+.modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #5A8C00;
+}
+
+/* Firefox scrollbar */
+.modal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #76B900 transparent;
+}
+
+/* Hide scrollbar when not needed */
+.modal-scroll {
+  overflow: auto;
+}
+
+/* Modern scroll behavior */
+.modal-scroll {
+  scroll-behavior: smooth;
+}

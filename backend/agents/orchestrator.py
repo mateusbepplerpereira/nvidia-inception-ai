@@ -15,6 +15,7 @@ class OrchestrationState(TypedDict):
     country: str
     sector: str
     limit: int
+    search_strategy: str
 
     # Contexto de startups já processadas
     valid_startups: List[Dict[str, Any]]
@@ -87,16 +88,54 @@ class StartupOrchestrator:
             invalid_names = [s["name"] for s in state["invalid_startups"]]
             exclusion_context += f"\nNÃO incluir estas startups inválidas: {invalid_names}"
 
-        # Query para busca web - ESPECÍFICA por setor se fornecido
-        if state.get('sector'):
-            search_query = f"AI startups {state['sector']} {state['country']} venture capital funding 2024"
-        else:
-            search_query = f"AI startups {state['country']} venture capital funding 2024"
+        # Definir query e restrições baseadas na estratégia de busca
+        search_strategy = state.get('search_strategy', 'specific')
 
-        # Definir restrições de setor se especificado
-        sector_constraint = ""
-        if state.get('sector'):
+        if search_strategy == 'market_demand':
+            # Busca por setores com alta demanda de mercado em país específico
+            search_query = f"AI startups most demanded sectors {state.get('country', 'Latin America')} market trends venture capital 2024"
             sector_constraint = f"""
+        ESTRATÉGIA: BUSCAR SETORES EMERGENTES E DE DEMANDA CRESCENTE EM {state.get('country', 'AMÉRICA LATINA')}
+        - Identifique os 3-5 setores de IA com MAIOR demanda/investimento em {state.get('country', 'América Latina')}
+        - Foque em setores emergentes e de alto crescimento específicos da região
+        - Priorize startups em setores como: FinTech, AI, Educação, Agro
+        - Diversifique entre diferentes setores promissores para a região
+        - NÃO se limite a um setor específico - explore a demanda regional do mercado
+        """
+
+        elif search_strategy == 'global_market_demand':
+            # Busca global por setores com alta demanda de mercado
+            search_query = "AI startups most demanded sectors global market trends venture capital Latin America 2024"
+            sector_constraint = """
+        ESTRATÉGIA: BUSCA GLOBAL POR SETORES EMERGENTES E DE ALTA DEMANDA
+        - Identifique os setores de IA com MAIOR demanda/investimento GLOBALMENTE
+        - Foque em setores emergentes e de alto crescimento mundial
+        - Priorize startups em setores como: FinTech, AI, Educação, Agro
+        - Diversifique entre diferentes setores promissores globalmente
+        - Aceite startups de qualquer país, mas priorize América Latina quando possível
+        - NÃO se limite a um setor específico - explore a demanda GLOBAL do mercado
+        """
+
+        elif search_strategy == 'global':
+            # Busca global sem limitação geográfica
+            if state.get('country') and state.get('country') != '':
+                search_query = f"AI startups {state.get('country', '')} {state.get('sector', '')} global market venture capital funding 2024".strip()
+            else:
+                search_query = f"AI startups {state.get('sector', '')} global market Latin America venture capital funding 2024".strip()
+
+            sector_constraint = f"""
+        ESTRATÉGIA: BUSCA GLOBAL SEM LIMITAÇÃO GEOGRÁFICA
+        - Busque startups de IA em qualquer país, priorizando América Latina se aplicável
+        - Aceite startups do mundo todo que tenham presença ou interesse na América Latina
+        - Foque em startups com potencial de expansão global
+        {f'- Setor específico: {state.get("sector")}' if state.get('sector') else '- Explore diversos setores de IA'}
+        """
+
+        else:  # search_strategy == 'specific'
+            # Busca específica original
+            if state.get('sector'):
+                search_query = f"AI startups {state['sector']} {state.get('country', 'Brazil')} venture capital funding 2024"
+                sector_constraint = f"""
         RESTRIÇÃO OBRIGATÓRIA DE SETOR:
         - APENAS startups do setor "{state['sector']}"
         - NÃO incluir startups de outros setores
@@ -105,10 +144,26 @@ class StartupOrchestrator:
         - Se for "agtech", APENAS agtechs
         - REJEITAR qualquer startup fora do setor especificado
         """
+            else:
+                search_query = f"AI startups {state.get('country', 'Brazil')} venture capital funding 2024"
+                sector_constraint = ""
+
+        # Contexto geográfico baseado na estratégia
+        geographic_context = ""
+        if search_strategy == 'global_market_demand':
+            geographic_context = "globalmente por setores de alta demanda (priorizando América Latina)"
+        elif search_strategy == 'global':
+            geographic_context = "globalmente (priorizando América Latina quando aplicável)"
+        elif search_strategy == 'market_demand':
+            geographic_context = f"em {state.get('country', 'América Latina')} por setores emergentes"
+        elif state.get('country'):
+            geographic_context = f"em {state['country']}"
+        else:
+            geographic_context = "na América Latina"
 
         # Prompt otimizado para usar WebSearch
         prompt = f"""
-        Use a ferramenta WebSearch para encontrar EXATAMENTE {state['limit']} startups de IA reais em {state['country']} que receberam funding de VC.
+        Use a ferramenta WebSearch para encontrar EXATAMENTE {state['limit']} startups de IA reais {geographic_context} que receberam funding de VC.
 
         QUERY PARA BUSCAR: "{search_query}"
 
@@ -145,12 +200,12 @@ class StartupOrchestrator:
           {{
             "name": "Nome Exato da Startup",
             "website": "https://site-oficial-confirmado-na-busca.com.br",
-            "sector": "{state.get('sector', 'AI/Technology')}",
+            "sector": "{state.get('sector') if state.get('sector') else 'AI/Technology'}",
             "ai_technologies": ["Computer Vision", "Natural Language Processing"],
             "founded_year": 2021,
             "last_funding_amount": 5000000,
             "investor_names": ["Nome do Investidor"],
-            "country": "{state['country']}",
+            "country": "{state.get('country', 'Global')}",
             "city": "Cidade",
             "description": "Descrição da startup",
             "has_venture_capital": true,
@@ -214,6 +269,12 @@ class StartupOrchestrator:
                 state["errors"].append("Conteúdo vazio após limpeza")
                 state["discovered_startups"] = []
                 return state
+
+            # Corrigir underscores em números para evitar erro de JSON
+            import re
+            content = re.sub(r'"last_funding_amount":\s*(\d+)_(\d+)', r'"last_funding_amount": \1\2', content)
+            content = re.sub(r':(\s*)(\d+)_(\d+)', r':\1\2\3', content)
+            logger.info(f"JSON corrigido (primeiros 200 chars): {content[:200]}...")
 
             startups = json.loads(content)
 
@@ -877,13 +938,15 @@ class StartupOrchestrator:
             return {"error": f"Request error: {str(e)}"}
 
     def run_orchestration(self, country: str, sector: str = None, limit: int = 5,
-                         existing_valid: List = None, existing_invalid: List = None) -> Dict[str, Any]:
+                         existing_valid: List = None, existing_invalid: List = None,
+                         search_strategy: str = "specific") -> Dict[str, Any]:
         """Executar orquestração completa"""
 
         initial_state = OrchestrationState(
             country=country,
             sector=sector,
             limit=limit,
+            search_strategy=search_strategy,
             valid_startups=existing_valid or [],
             invalid_startups=existing_invalid or [],
             discovered_startups=[],

@@ -18,9 +18,19 @@ async def run_startup_pipeline(
     """Rota unificada para orquestração completa: Discovery → Validation → Metrics"""
     service = AgentService(db)
 
+    # Se a requisição vem do worker (job agendado), tratar de forma especial
+    if request.from_worker and request.job_id:
+        # Lógica separada para execução via worker (futuramente para e-mail)
+        task_type_suffix = "_worker"
+        message_prefix = "Worker job"
+    else:
+        # Execução manual normal
+        task_type_suffix = ""
+        message_prefix = "Manual"
+
     # Create task record
     task = service.create_task(
-        task_type="orchestration",
+        task_type=f"orchestration{task_type_suffix}",
         agent_name="LangGraphOrchestrator",
         input_data=request.dict()
     )
@@ -32,13 +42,16 @@ async def run_startup_pipeline(
         task.id,
         request.country,
         request.sector,
-        getattr(request, 'limit', 5)
+        getattr(request, 'limit', 5),
+        request.from_worker,
+        request.job_id,
+        getattr(request, 'search_strategy', 'specific')
     )
 
     return AgentTaskResponse(
         task_id=task.id,
         status="pending",
-        message=f"Orchestration pipeline queued (queue size: {task_manager.get_queue_size()})"
+        message=f"{message_prefix} orchestration pipeline queued (queue size: {task_manager.get_queue_size()})"
     )
 
 # Rotas antigas removidas - agora tudo é feito via orquestração unificada
