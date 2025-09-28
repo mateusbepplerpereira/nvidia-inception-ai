@@ -127,12 +127,22 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
     from datetime import datetime
     start_time = datetime.now()
 
+    # Verificar se job_id existe antes de referenciar
+    valid_job_id = None
+    if from_worker and job_id:
+        from database.models import ScheduledJob
+        existing_job = db.query(ScheduledJob).filter(ScheduledJob.id == job_id).first()
+        if existing_job:
+            valid_job_id = job_id
+        else:
+            print(f"WARNING: job_id {job_id} não existe na tabela scheduled_jobs. Usando None.")
+
     task_log = TaskLog(
         task_name=f"Orquestração de Startups - {country}",
         task_type="startup_discovery",
         status="started",
         message=f"Iniciando descoberta de startups para {country}" + (f" - Setor: {sector}" if sector else ""),
-        scheduled_job_id=job_id if from_worker else None,
+        scheduled_job_id=valid_job_id,
         agent_task_id=agent_task_id,
         started_at=start_time
     )
@@ -154,7 +164,13 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
         existing_invalid = service.get_invalid_startups_for_context(country, sector)
 
         # Create orchestrator and run full pipeline
-        orchestrator = StartupOrchestrator()
+        # Nota: Sempre criar nova instância para evitar problemas de estado compartilhado
+        try:
+            orchestrator = StartupOrchestrator()
+            print(f"Orchestrator criado com sucesso para task {agent_task_id}")
+        except Exception as e:
+            print(f"ERRO ao criar orchestrator: {e}")
+            raise e
         result = orchestrator.run_orchestration(
             country=country,
             sector=sector,
@@ -225,29 +241,17 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             # Commit das alterações
             db.commit()
 
-            # Criar notificação de sucesso
+            # Criar notificação de sucesso (será enviada no finally)
             from database.models import Notification
             notification = Notification(
                 title="Descoberta de Startups Concluída",
                 message=f"Task #{agent_task_id}: Encontradas {valid_count} startups válidas para {country}" + (f" no setor {sector}" if sector else ""),
                 type="success",
                 task_id=agent_task_id,
-                job_id=job_id if from_worker else None
+                job_id=valid_job_id
             )
             db.add(notification)
             db.commit()
-
-            # Envia notificação via WebSocket
-            from services.notification_service import notification_service
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(notification_service.send_notification(notification))
-                else:
-                    loop.run_until_complete(notification_service.send_notification(notification))
-            except:
-                pass  # Se WebSocket falhar, não quebrar a execução
 
             print(f"{valid_count} startups válidas salvas")
             print(f"{metrics_count} métricas calculadas")
@@ -275,29 +279,17 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             # Commit das alterações
             db.commit()
 
-            # Criar notificação de erro
+            # Criar notificação de erro (será enviada no finally)
             from database.models import Notification
             notification = Notification(
                 title="Erro na Descoberta de Startups",
                 message=f"Task #{agent_task_id}: Falha na descoberta para {country}: {result.get('error', 'Erro desconhecido')}",
                 type="error",
                 task_id=agent_task_id,
-                job_id=job_id if from_worker else None
+                job_id=valid_job_id
             )
             db.add(notification)
             db.commit()
-
-            # Envia notificação via WebSocket
-            from services.notification_service import notification_service
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(notification_service.send_notification(notification))
-                else:
-                    loop.run_until_complete(notification_service.send_notification(notification))
-            except:
-                pass  # Se WebSocket falhar, não quebrar a execução
 
     except Exception as e:
         error_msg = f"Erro na orquestração: {str(e)}"

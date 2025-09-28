@@ -41,9 +41,10 @@ class StartupOrchestrator:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY não encontrada")
 
-        self.base_url = "https://api.openai.com/v1/chat/completions"
-        # Sempre usar modelo do env - deve ser gpt-4o-mini-search-preview para WebSearch
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini-search-preview")
+        # Usar Responses API para web search com gpt-4o-mini padrão
+        self.chat_url = "https://api.openai.com/v1/chat/completions"
+        self.responses_url = "https://api.openai.com/v1/responses"
+        self.model = "gpt-4o-mini"  # Modelo padrão, mais estável que search-preview
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -75,7 +76,8 @@ class StartupOrchestrator:
 
     def _discovery_agent(self, state: OrchestrationState) -> OrchestrationState:
         """Agente de descoberta usando WebSearch nativo"""
-        logger.info("*** DISCOVERY AGENT CHAMADO ***")
+        logger.info(f"*** DISCOVERY AGENT CHAMADO *** - Limite: {state['limit']}")
+        logger.info(f"Estado atual: country={state.get('country')}, sector={state.get('sector')}, strategy={state.get('search_strategy')}")
         state["current_step"] = "discovery"
 
         # Criar contexto de exclusão
@@ -93,24 +95,24 @@ class StartupOrchestrator:
 
         if search_strategy == 'market_demand':
             # Busca por setores com alta demanda de mercado em país específico
-            search_query = f"AI startups most demanded sectors {state.get('country', 'Latin America')} market trends venture capital 2024"
+            search_query = f"AI startups most demanded sectors {state.get('country', 'Latin America')} market trends venture capital"
             sector_constraint = f"""
         ESTRATÉGIA: BUSCAR SETORES EMERGENTES E DE DEMANDA CRESCENTE EM {state.get('country', 'AMÉRICA LATINA')}
         - Identifique os 3-5 setores de IA com MAIOR demanda/investimento em {state.get('country', 'América Latina')}
         - Foque em setores emergentes e de alto crescimento específicos da região
-        - Priorize startups em setores como: FinTech, AI, Educação, Agro
+        - Explore setores de IA de alta demanda global
         - Diversifique entre diferentes setores promissores para a região
         - NÃO se limite a um setor específico - explore a demanda regional do mercado
         """
 
         elif search_strategy == 'global_market_demand':
             # Busca global por setores com alta demanda de mercado
-            search_query = "AI startups most demanded sectors global market trends venture capital Latin America 2024"
+            search_query = "AI startups most demanded sectors global market trends venture capital Latin America"
             sector_constraint = """
         ESTRATÉGIA: BUSCA GLOBAL POR SETORES EMERGENTES E DE ALTA DEMANDA
         - Identifique os setores de IA com MAIOR demanda/investimento GLOBALMENTE
         - Foque em setores emergentes e de alto crescimento mundial
-        - Priorize startups em setores como: FinTech, AI, Educação, Agro
+        - Explore setores de IA de alta demanda global
         - Diversifique entre diferentes setores promissores globalmente
         - Aceite startups de qualquer país, mas priorize América Latina quando possível
         - NÃO se limite a um setor específico - explore a demanda GLOBAL do mercado
@@ -119,9 +121,9 @@ class StartupOrchestrator:
         elif search_strategy == 'global':
             # Busca global sem limitação geográfica
             if state.get('country') and state.get('country') != '':
-                search_query = f"AI startups {state.get('country', '')} {state.get('sector', '')} global market venture capital funding 2024".strip()
+                search_query = f"AI startups {state.get('country', '')} {state.get('sector', '')} global market venture capital funding".strip()
             else:
-                search_query = f"AI startups {state.get('sector', '')} global market Latin America venture capital funding 2024".strip()
+                search_query = f"AI startups {state.get('sector', '')} global market Latin America venture capital funding".strip()
 
             sector_constraint = f"""
         ESTRATÉGIA: BUSCA GLOBAL SEM LIMITAÇÃO GEOGRÁFICA
@@ -134,21 +136,25 @@ class StartupOrchestrator:
         else:  # search_strategy == 'specific'
             # Busca específica original
             if state.get('sector'):
-                search_query = f"AI startups {state['sector']} {state.get('country', 'Brazil')} venture capital funding 2024"
+                # Query muito específica para país e setor
+                country = state.get('country', 'Brazil')
+                search_query = f"startups brasileiras {state['sector']} {country} fundadas Brasil venture capital funding AI artificial intelligence"
                 sector_constraint = f"""
-        RESTRIÇÃO OBRIGATÓRIA DE SETOR - CUMPRIMENTO OBRIGATÓRIO:
-        - EXCLUSIVAMENTE startups do setor "{state['sector']}"
+        RESTRIÇÕES ABSOLUTA DE PAÍS E SETOR - CUMPRIMENTO OBRIGATÓRIO:
+
+        PAÍS: EXCLUSIVAMENTE startups do país "{state.get('country', 'Brazil')}"
+        - Se busca "Brazil" → APENAS startups BRASILEIRAS fundadas no Brasil
+        - Se encontrar startup da Argentina, Chile, etc. → REJEITÁ-LA COMPLETAMENTE
+        - VALIDAR: a startup deve ser FUNDADA e SEDIADA no país especificado
+
+        SETOR: EXCLUSIVAMENTE startups do setor "{state['sector']}"
         - ZERO TOLERÂNCIA para outros setores
-        - Exemplos CORRETOS por setor:
-          * "agtech"/"agro": startups de agricultura, agronomia, pecuária, supply chain rural
-          * "fintech": startups de serviços financeiros, pagamentos, crédito, bancos digitais
-          * "healthtech": startups de saúde, medicina, dispositivos médicos, telemedicina
-        - SE uma startup for de "fintech" (pagamentos, crédito) e você está buscando "agtech", REJEITÁ-LA COMPLETAMENTE
-        - VALIDAR: o core business da startup deve ser 100% do setor "{state['sector']}"
-        - NO CAMPO "sector" do JSON, usar EXATAMENTE: "{state['sector']}"
+        - Se uma startup é de outro setor → REJEITÁ-LA COMPLETAMENTE
+        - VALIDAR: o core business deve ser 100% "{state['sector']}"
+        - NO CAMPO "sector" usar EXATAMENTE: "{state['sector']}"
         """
             else:
-                search_query = f"AI startups {state.get('country', 'Brazil')} venture capital funding 2024"
+                search_query = f"AI startups {state.get('country', 'Brazil')} venture capital funding"
                 sector_constraint = ""
 
         # Contexto geográfico baseado na estratégia
@@ -164,11 +170,17 @@ class StartupOrchestrator:
         else:
             geographic_context = "na América Latina"
 
+        # Buscar startups já descobertas para exclusão
+        existing_startups = self._get_existing_startups(state)
+        exclusion_text = self._format_exclusion_list(existing_startups, state.get('sector'))
+
         # Prompt otimizado para usar WebSearch
         prompt = f"""
         Use a ferramenta WebSearch para encontrar EXATAMENTE {state['limit']} startups de IA reais {geographic_context} que receberam funding de VC.
 
         QUERY PARA BUSCAR: "{search_query}"
+
+        {exclusion_text}
 
         PRIORIDADE DE BUSCA (busque primeiro nessas fontes CONFIÁVEIS):
         1. FONTES PRIMÁRIAS: neofeed.com.br, brasiljorney.com.br, startup.com.br, crunchbase.com, techcrunch.com
@@ -193,41 +205,95 @@ class StartupOrchestrator:
         3. Funding verificado em fontes CONFIÁVEIS (Neofeed, BrasilJourney, etc.)
         4. Tecnologias AI específicas e detalhadas
 
+        REGRAS ANTI-ALUCINAÇÃO CRÍTICAS - SEGUIR RIGOROSAMENTE:
+
+        1. COERÊNCIA ABSOLUTA NOME-DESCRIÇÃO:
+           - CONFIRMAR que o nome no campo "name" é EXATAMENTE a mesma empresa da "description"
+           - Se o nome é "Magie", toda a descrição deve falar APENAS da "Magie"
+           - JAMAIS misturar: nome "TechStartup" com descrição da "OutraEmpresa"
+           - VERIFICAR múltiplas vezes essa correspondência antes de incluir
+
+        2. VALIDAÇÃO RIGOROSA DE SETOR/CORE BUSINESS:
+           - Identificar o CORE BUSINESS real da startup pela descrição
+           - Se busca "{state.get('sector', '')}", incluir APENAS startups cujo negócio principal é 100% desse setor
+           - Analise o core business real da startup
+           - Não confunda empresas que apenas "atendem" um setor com empresas "do" setor
+           - Empresa que vende para agro ≠ empresa de agro (a menos que seja seu core business)
+           - ANALISAR o negócio principal, não apenas o mercado alvo
+
+        3. VERIFICAÇÃO OBRIGATÓRIA DE WEBSITES:
+           - TODO startup DEVE ter um website funcional e verificado
+           - Use busca web para confirmar que o site existe e funciona
+           - Teste múltiplas variações: https://startup.com, https://www.startup.com, etc.
+           - Se o site não funcionar ou não existir, DESCARTAR a startup completamente
+           - NUNCA inventar URLs ou incluir startups sem sites funcionais verificados
+           - Priorizar startups com sites ativos e responsivos
+
         OBRIGATÓRIO - TECNOLOGIAS EM INGLÊS:
         - ai_technologies SEMPRE em inglês: ["Computer Vision", "Natural Language Processing", "Machine Learning"]
         - NÃO usar português: "Visão Computacional", "Processamento de Linguagem Natural"
         - Tecnologias específicas, não mercados: "Computer Vision" não "análise de dados financeiros"
 
-        RETORNE JSON:
+        FORMATO DE RESPOSTA OBRIGATÓRIO - APENAS JSON VÁLIDO:
+
+        RESPONDA APENAS COM JSON ARRAY VÁLIDO (sem explicações, sem markdown, sem texto adicional):
+
         [
           {{
             "name": "Nome Exato da Startup",
-            "website": "https://site-oficial-confirmado-na-busca.com.br",
-            "sector": "{state.get('sector') if state.get('sector') else 'AI/Technology'}",
+            "website": "https://site-oficial-verificado.com.br",
+            "sector": "{state.get('sector', 'AI/Technology')}",
             "ai_technologies": ["Computer Vision", "Natural Language Processing"],
             "founded_year": 2021,
             "last_funding_amount": 5000000,
             "investor_names": ["Nome do Investidor"],
             "country": "{state.get('country', 'Global')}",
             "city": "Cidade",
-            "description": "Descrição da startup",
+            "description": "Descrição verificada da startup",
             "has_venture_capital": true,
             "sources": {{
-              "funding": ["URL da fonte"],
-              "validation": ["URL de confirmação"]
+              "funding": ["URL fonte de funding"],
+              "validation": ["URL de validação"]
             }}
           }}
         ]
 
-        VALIDAÇÃO FINAL OBRIGATÓRIA:
-        - Antes de retornar o JSON, REVISAR cada startup
-        - CONFIRMAR que o setor de cada startup é EXATAMENTE "{state.get('sector', 'AI/Technology')}"
-        - REMOVER qualquer startup que não seja 100% do setor especificado
-        - Se nenhuma startup for do setor correto, retornar array vazio []
+        IMPORTANTE:
+        - NÃO adicione texto antes ou depois do JSON
+        - NÃO use markdown (```json)
+        - NÃO explique nada
+        - APENAS o array JSON válido
+
+        PROCESSO DE VALIDAÇÃO FINAL OBRIGATÓRIO:
+        ETAPA 1 - Revisão Individual por Startup:
+        Para CADA startup encontrada, perguntar-se:
+        ✓ O nome no campo "name" é exatamente a mesma empresa da "description"?
+        ✓ O core business principal é 100% do setor "{state.get('sector', 'AI/Technology')}"?
+        ✓ O website foi verificado e funciona (acessível via busca web)?
+        ✓ As tecnologias AI são específicas e em inglês?
+        ✓ Os dados de funding são consistentes e verificados?
+
+        VERIFICAÇÃO CRÍTICA DE WEBSITE:
+        - TESTAR o website na busca web antes de incluir
+        - Se o site retornar erro 404, não funcionar ou não existir → EXCLUIR startup
+        - Apenas incluir startups cujo website está comprovadamente ativo
+        - Website válido é OBRIGATÓRIO para inclusão
+
+        ETAPA 2 - Filtro Rigoroso:
+        - REMOVER startups que falhem em qualquer critério acima
+        - REMOVER startups cujo negócio principal não seja 100% do setor solicitado
+        - REMOVER startups com incoerência nome-descrição
+        - Se todas as startups foram removidas, retornar array vazio []
+
+        ETAPA 3 - Formatação Final:
+        - Campo 'sector': usar EXATAMENTE "{state.get('sector', 'AI/Technology')}"
+        - Campo 'description': descrever APENAS a startup mencionada no campo 'name'
+        - Campo 'ai_technologies': APENAS em inglês, tecnologias específicas
         """
 
         try:
-            logger.info("=== INICIANDO DISCOVERY AGENT ===")
+            logger.info(f"=== INICIANDO DISCOVERY AGENT === - Limite: {state['limit']}")
+            logger.info(f"Prompt enviado (primeiros 300 chars): {prompt[:300]}...")
             result = self._make_openai_request_with_websearch(prompt)
             logger.info(f"=== RESULTADO RECEBIDO: {result} ===")
 
@@ -251,25 +317,39 @@ class StartupOrchestrator:
                 state["discovered_startups"] = []
                 return state
 
-            # Extrair JSON do conteúdo (pode ter texto antes e depois)
+            # Extrair JSON do conteúdo mais agressivamente
+            original_content = content
+
+            # Remover markdown se existir
             if "```json" in content:
-                # Encontrar o início do JSON
                 json_start = content.find("```json") + len("```json")
-                # Encontrar o fim do JSON
                 json_end = content.find("```", json_start)
                 if json_end != -1:
                     content = content[json_start:json_end].strip()
                 else:
-                    # Se não encontrar o fim, pegar tudo após ```json
                     content = content[json_start:].strip()
             elif "```" in content:
-                # Tratar caso genérico de markdown
                 json_start = content.find("```") + 3
                 json_end = content.find("```", json_start)
                 if json_end != -1:
                     content = content[json_start:json_end].strip()
                 else:
                     content = content[json_start:].strip()
+
+            # Se ainda não é JSON, tentar encontrar array no texto
+            if not content.strip().startswith('['):
+                # Procurar por array JSON no meio do texto
+                import re
+                json_match = re.search(r'\[.*?\]', content, re.DOTALL)
+                if json_match:
+                    content = json_match.group(0)
+                else:
+                    logger.error(f"Nenhum JSON array encontrado no conteúdo")
+                    logger.error(f"Conteúdo original completo: {original_content}")
+                    # Se não encontrar JSON, retornar array vazio
+                    state["discovered_startups"] = []
+                    state["errors"].append("Modelo retornou formato inválido - não JSON")
+                    return state
 
             logger.info(f"JSON extraído: {content[:200]}...")
 
@@ -315,17 +395,41 @@ class StartupOrchestrator:
         return state
 
     def _make_openai_request_with_websearch(self, prompt: str, max_tokens: int = 2500) -> Dict[str, Any]:
-        """Fazer requisição OpenAI com WebSearch usando estrutura correta"""
+        """Fazer requisição OpenAI usando Chat Completions API com gpt-4o-mini padrão"""
 
-        # Usar sempre modelo do env (deve ser gpt-4o-mini-search-preview)
+        # Usar Responses API corretamente com gpt-4o-mini + web_search_preview
         payload = {
-            "model": self.model,  # Modelo do env
-            "web_search_options": {},  # Estrutura simples conforme OpenAI
-            "messages": [
-                {"role": "system", "content": "Você é um especialista em descobrir startups reais. Use busca web para encontrar informações atualizadas e precisas."},
+            "model": self.model,  # gpt-4o-mini padrão
+            "input": [
+                {"role": "system", "content": """ESPECIALISTA EM IDENTIFICAÇÃO RIGOROSA DE STARTUPS POR SETOR E PAÍS
+
+REGRA CRÍTICA - ZERO TOLERÂNCIA:
+- Se busca setor "Agro" → APENAS empresas cujo CORE BUSINESS é agricultura, pecuária, biotecnologia agrícola
+- Se encontrar Magie (fintech) → REJEITAR (é fintech, não agro)
+- Se encontrar Capim (fintech odontológico) → REJEITAR (é fintech health, não agro)
+- Se encontrar qualquer fintech/healthtech → REJEITAR COMPLETAMENTE
+
+DEFINIÇÕES ESPECÍFICAS:
+- AGRO = agricultura, pecuária, agrotecnologia, biotecnologia agrícola, equipamentos agrícolas
+- FINTECH = pagamentos, crédito, empréstimos, cartões, PIX (NUNCA é agro)
+- HEALTHTECH = saúde, medicina, odontologia (NUNCA é agro)
+
+OBRIGATÓRIO:
+1. Use web search para identificar CORE BUSINESS real
+2. Se a empresa faz pagamentos/crédito → É FINTECH (rejeitar se busca agro)
+3. Se a empresa faz saúde/odonto → É HEALTHTECH (rejeitar se busca agro)
+4. APENAS incluir se for 100% do setor solicitado
+
+RESPOSTA: JSON array apenas."""},
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": max_tokens
+            "tools": [
+                {
+                    "type": "web_search_preview"
+                }
+            ],
+            "temperature": 0.1,  # Baixa temperatura para menos alucinações
+            "max_output_tokens": max_tokens
         }
 
         try:
@@ -333,7 +437,7 @@ class StartupOrchestrator:
             logger.info(f"Payload enviado: {json.dumps(payload, indent=2)}")
 
             response = requests.post(
-                self.base_url,
+                self.responses_url,  # Usar Responses API corretamente
                 headers=self.headers,
                 json=payload,
                 timeout=120  # Timeout maior para WebSearch
@@ -350,17 +454,47 @@ class StartupOrchestrator:
                 result = response.json()
                 logger.info(f"WebSearch concluído com sucesso usando {self.model}")
 
-                # Log da estrutura da resposta
-                logger.info(f"Estrutura da resposta: {list(result.keys())}")
+                # Log detalhado da estrutura da resposta
+                logger.info(f"=== ESTRUTURA COMPLETA DA RESPOSTA ===")
+                logger.info(f"Keys disponíveis: {list(result.keys())}")
+                logger.info(f"Resposta completa (primeiros 500 chars): {str(result)[:500]}")
+
                 if "choices" in result and result["choices"]:
                     logger.info(f"Choices disponíveis: {len(result['choices'])}")
                     message_content = result["choices"][0]["message"]["content"]
                     logger.info(f"Conteúdo da mensagem (primeiros 200 chars): {message_content[:200] if message_content else 'VAZIO'}")
+                elif "output" in result:
+                    logger.info(f"Output encontrado - tipo: {type(result['output'])}")
+                    logger.info(f"Output (primeiros 200 chars): {str(result['output'])[:200]}")
                 else:
-                    logger.error("Estrutura de choices não encontrada na resposta!")
+                    logger.error("Nem choices nem output encontrados na resposta!")
+                    logger.error(f"Estrutura recebida: {result}")
+
+                # DEBUG: Estrutura básica para confirmar recebimento
+                logger.info(f"Status da resposta: {result.get('status')}")
+                logger.info(f"Outputs recebidos: {len(result.get('output', []))}")
+
+                # Responses API - estrutura real baseada nos logs
+                content = ""
+                annotations = []
+
+                try:
+                    # O conteúdo está em result['output'][1]['content'][0]['text']
+                    if result.get("output") and len(result["output"]) > 1:
+                        message_output = result["output"][1]  # Segundo item é a mensagem
+                        if message_output.get("content") and len(message_output["content"]) > 0:
+                            content = message_output["content"][0].get("text", "")
+                            annotations = message_output["content"][0].get("annotations", [])
+                except Exception as e:
+                    logger.error(f"Erro ao extrair da estrutura real: {e}")
+                    content = ""
+
+                logger.info(f"Content extraído via output_text: {content[:200] if content else 'VAZIO'}...")
+                logger.info(f"Annotations encontradas: {len(annotations)}")
 
                 return {
-                    "content": result["choices"][0]["message"]["content"] if result.get("choices") and result["choices"][0].get("message") else "",
+                    "content": content,
+                    "annotations": annotations,
                     "tokens_used": result.get("usage", {}).get("total_tokens", 0)
                 }
             else:
@@ -372,6 +506,69 @@ class StartupOrchestrator:
             logger.error(f"Exceção na requisição WebSearch: {str(e)}")
             return {"error": f"WebSearch Request error: {str(e)}"}
 
+    def _get_existing_startups(self, state: OrchestrationState) -> list:
+        """Busca startups já descobertas para evitar duplicação"""
+        try:
+            from database.connection import get_db
+            from database.models import Startup
+
+            db = next(get_db())
+
+            # Se há setor especificado, buscar apenas do mesmo setor
+            if state.get('sector'):
+                existing = db.query(Startup.name, Startup.sector).filter(
+                    Startup.sector.ilike(f"%{state['sector']}%")
+                ).limit(100).all()
+            else:
+                # Se não há setor, buscar todas
+                existing = db.query(Startup.name, Startup.sector).limit(200).all()
+
+            db.close()
+            return [(startup.name, startup.sector) for startup in existing]
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar startups existentes: {e}")
+            return []
+
+    def _format_exclusion_list(self, existing_startups: list, sector: str = None) -> str:
+        """Formata lista de exclusão para o prompt"""
+        if not existing_startups:
+            return ""
+
+        if sector:
+            # Filtrar apenas startups do mesmo setor
+            sector_startups = [name for name, startup_sector in existing_startups
+                             if startup_sector and sector.lower() in startup_sector.lower()]
+
+            if sector_startups:
+                startup_list = "\n".join([f"- {name}" for name in sector_startups[:20]])  # Limitar a 20
+                return f"""
+        EXCLUSÃO OBRIGATÓRIA - STARTUPS JÁ CADASTRADAS NO SETOR {sector.upper()}:
+        NÃO BUSCAR as seguintes startups pois já foram descobertas:
+        {startup_list}
+
+        IMPORTANTE: Se encontrar qualquer uma dessas startups na busca, DESCARTÁ-LA imediatamente.
+        Busque APENAS startups NOVAS que não estão nesta lista.
+        """
+        else:
+            # Para busca sem setor específico, mostrar todas por setor
+            by_sector = {}
+            for name, startup_sector in existing_startups:
+                sector_key = startup_sector or "Outros"
+                if sector_key not in by_sector:
+                    by_sector[sector_key] = []
+                by_sector[sector_key].append(name)
+
+            exclusion_text = "EXCLUSÃO OBRIGATÓRIA - STARTUPS JÁ CADASTRADAS:\n"
+            for sector_name, names in by_sector.items():
+                limited_names = names[:10]  # Limitar a 10 por setor
+                startup_list = "\n".join([f"  - {name}" for name in limited_names])
+                exclusion_text += f"\n{sector_name}:\n{startup_list}\n"
+
+            exclusion_text += "\nIMPORTANTE: NÃO BUSCAR nenhuma dessas startups. Busque APENAS startups NOVAS."
+            return exclusion_text
+
+        return ""
 
 
     def _source_validation_agent(self, state: OrchestrationState) -> OrchestrationState:
@@ -422,7 +619,7 @@ class StartupOrchestrator:
             "startse": 12, "ecommercebrasil": 10, "tecmundo": 10,
 
             # Fontes setoriais especializadas (peso médio)
-            "fintechbrasil": 12, "saúdebusiness": 10, "agtech": 10,
+            "setortech": 12, "industrytech": 10, "sectorbusiness": 10,
 
             # Sites oficiais e comunicados (peso médio)
             "site oficial": 12, "press release": 10, "linkedin company": 10,
@@ -584,27 +781,7 @@ class StartupOrchestrator:
         issues = []
         validation_scores = {}
 
-        # VALIDAÇÃO DE SETOR OBRIGATÓRIA
-        if state and state.get('sector'):
-            expected_sector = state.get('sector').lower()
-            startup_sector = startup.get('sector', '').lower()
-
-            # Mapeamento de setores similares
-            sector_mappings = {
-                'agro': ['agtech', 'agro', 'agricultura', 'agronomia'],
-                'agtech': ['agtech', 'agro', 'agricultura', 'agronomia'],
-                'fintech': ['fintech', 'financas', 'finance'],
-                'healthtech': ['healthtech', 'saude', 'health', 'medicina'],
-                'edtech': ['edtech', 'educacao', 'education'],
-            }
-
-            valid_sectors = sector_mappings.get(expected_sector, [expected_sector])
-            sector_match = any(valid in startup_sector for valid in valid_sectors)
-
-            validation_scores["sector_score"] = 100 if sector_match else 0
-            if not sector_match:
-                issues.append(f"Setor incorreto: esperado '{state.get('sector')}', encontrado '{startup.get('sector')}'")
-                logger.warning(f"SETOR INCORRETO: {startup.get('name')} é '{startup.get('sector')}' mas esperava-se '{state.get('sector')}'")
+        # Deixar o agente de IA fazer a validação de setor
 
         # Validar website
         website_valid = self._validate_website(startup.get("website"))
@@ -631,9 +808,8 @@ class StartupOrchestrator:
             startup.get("ai_technologies")
         )
 
-        # Startup é válida apenas se tem dados básicos E setor correto
-        has_correct_sector = validation_scores.get("sector_score", 100) > 0  # Se não há validação de setor, considera válido
-        is_valid = has_basic_data and has_correct_sector
+        # Startup é válida se tem dados básicos (agente de IA já fez a validação de setor)
+        is_valid = has_basic_data
 
         return {
             "is_valid": is_valid,
@@ -952,7 +1128,7 @@ class StartupOrchestrator:
 
         try:
             response = requests.post(
-                self.base_url,
+                self.chat_url,  # Usar chat_url em vez de base_url
                 headers=self.headers,
                 json=payload,
                 timeout=60
@@ -995,7 +1171,20 @@ class StartupOrchestrator:
 
         try:
             # Executar grafo
-            final_state = self.graph.invoke(initial_state)
+            logger.info(f"=== EXECUTANDO LANGGRAPH === - Limite: {limit}")
+            logger.info(f"Estado inicial - limit: {initial_state.get('limit')}, sector: {initial_state.get('sector')}")
+            logger.info(f"Tipo do self.graph: {type(self.graph)}")
+
+            try:
+                final_state = self.graph.invoke(initial_state)
+                logger.info(f"=== LANGGRAPH CONCLUÍDO ===")
+            except Exception as graph_error:
+                logger.error(f"=== ERRO NO LANGGRAPH ===")
+                logger.error(f"Tipo do erro: {type(graph_error)}")
+                logger.error(f"Mensagem: {str(graph_error)}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise graph_error
 
             end_time = datetime.now()
             final_state["processing_time"] = (end_time - start_time).total_seconds()

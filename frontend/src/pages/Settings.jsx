@@ -217,12 +217,12 @@ function Settings() {
                       <div className="text-sm">
                         <div className="text-white font-medium">
                           {!job.task_config?.country && !job.task_config?.sector
-                            ? "🌍 Busca Global por Demanda"
+                            ? "Busca Global por Demanda"
                             : !job.task_config?.sector
-                            ? "🎯 Setores Emergentes"
+                            ? "Setores Emergentes"
                             : !job.task_config?.country
-                            ? "🌐 Global - Setor Específico"
-                            : "🔍 Busca Específica"
+                            ? "Global - Setor Específico"
+                            : "Busca Específica"
                           }
                         </div>
                         <div className="text-gray-400">

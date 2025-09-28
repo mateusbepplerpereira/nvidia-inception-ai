@@ -75,21 +75,24 @@ async def get_queue_status():
 
 @router.get("/metrics/ranking")
 async def get_startup_ranking(
-    limit: int = 20,
+    limit: int = 200,  # Aumentar limite para incluir todas
     db: Session = Depends(get_db)
 ):
-    """Retorna ranking de startups ordenadas por score total"""
+    """Retorna ranking de startups ordenadas por score total (inclui startups sem métricas)"""
 
-    # Query para buscar startups com métricas ordenadas por total_score
-    startups_with_metrics = db.query(models.Startup, models.StartupMetrics)\
-        .join(models.StartupMetrics, models.Startup.id == models.StartupMetrics.startup_id)\
-        .order_by(models.StartupMetrics.total_score.desc())\
+    # Query para buscar TODAS as startups com LEFT JOIN para incluir as sem métricas
+    all_startups = db.query(models.Startup, models.StartupMetrics)\
+        .outerjoin(models.StartupMetrics, models.Startup.id == models.StartupMetrics.startup_id)\
+        .order_by(
+            models.StartupMetrics.total_score.desc().nullslast(),  # Métricas primeiro, nulls por último
+            models.Startup.created_at.desc()  # Para startups sem métricas, ordenar por data
+        )\
         .limit(limit)\
         .all()
 
     ranking = []
-    for startup, metrics in startups_with_metrics:
-        ranking.append({
+    for startup, metrics in all_startups:
+        startup_data = {
             "rank": len(ranking) + 1,
             "startup": {
                 "id": startup.id,
@@ -97,21 +100,34 @@ async def get_startup_ranking(
                 "website": startup.website,
                 "sector": startup.sector,
                 "last_funding_amount": startup.last_funding_amount
-            },
-            "metrics": {
+            }
+        }
+
+        # Adicionar métricas se existirem
+        if metrics:
+            startup_data["metrics"] = {
                 "market_demand_score": metrics.market_demand_score,
                 "technical_level_score": metrics.technical_level_score,
                 "partnership_potential_score": metrics.partnership_potential_score,
                 "total_score": metrics.total_score,
                 "analysis_date": metrics.analysis_date
             }
-        })
+        else:
+            # Startup sem métricas - retornar None para que o frontend saiba
+            startup_data["metrics"] = None
+
+        ranking.append(startup_data)
+
+    # Estatísticas apenas das startups com métricas
+    with_metrics = [r for r in ranking if r["metrics"] is not None]
 
     return {
         "ranking": ranking,
-        "total_analyzed": len(ranking),
-        "highest_score": ranking[0]["metrics"]["total_score"] if ranking else 0,
-        "lowest_score": ranking[-1]["metrics"]["total_score"] if ranking else 0
+        "total_startups": len(ranking),
+        "total_analyzed": len(with_metrics),
+        "total_without_metrics": len(ranking) - len(with_metrics),
+        "highest_score": with_metrics[0]["metrics"]["total_score"] if with_metrics else 0,
+        "lowest_score": with_metrics[-1]["metrics"]["total_score"] if with_metrics else 0
     }
 
 @router.get("/invalid/analysis")

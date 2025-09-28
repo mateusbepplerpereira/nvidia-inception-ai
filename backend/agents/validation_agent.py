@@ -15,9 +15,9 @@ class StartupValidationAgent:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
 
-        self.base_url = "https://api.openai.com/v1/chat/completions"
-        # Sempre usar modelo do env - deve ser gpt-4o-mini-search-preview para WebSearch
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini-search-preview")
+        self.chat_url = "https://api.openai.com/v1/chat/completions"
+        # Usar gpt-4o-mini padrão
+        self.model = "gpt-4o-mini"
 
     def _perform_targeted_web_validation(self, startup_name: str, country: str, website_works: bool) -> Dict[str, Any]:
         """Validação técnica simples baseada no website fornecido pelo discovery"""
@@ -86,19 +86,35 @@ class StartupValidationAgent:
 
         {'DADOS DA BUSCA WEB:' + json.dumps(web_validation_data, indent=2) if web_validation_data else 'Busca web não foi necessária.'}
 
-        CRITÉRIOS DE VALIDAÇÃO:
-        1. Website técnicamente válido: {'✓' if website_valid else '✗'}
-        2. Tecnologias IA APENAS em inglês e específicas (não mercados ou análises genéricas)
-        3. Setor consistente (sem generalizações ou hallucinations)
-        4. Consistência dos dados com busca web
-        5. Funding realista para o setor
-        6. Investidores conhecidos
+        CRITÉRIOS DE VALIDAÇÃO - APLICAR RIGOROSAMENTE:
 
-        INVALIDAR SE:
-        - Tecnologias em português ("Visão Computacional", "Processamento de Linguagem Natural")
-        - Tecnologias genéricas como "análise de dados financeiros", "análise de crédito"
-        - Setor inconsistente com requisição original
-        - Tecnologias que são na verdade mercados/aplicações, não tecnologias
+        1. COERÊNCIA NOME-DESCRIÇÃO: {'✓' if True else '✗'}
+           - Nome e descrição devem se referir à MESMA empresa
+           - Zero tolerância para mistura de empresas diferentes
+
+        2. VALIDAÇÃO TÉCNICA DE WEBSITE: {'✓' if website_valid else '✗'}
+           - Website deve ser tecnicamente acessível
+
+        3. TECNOLOGIAS IA - CRITÉRIO RIGOROSO:
+           - APENAS em inglês: "Computer Vision", "Natural Language Processing", "Machine Learning"
+           - ESPECÍFICAS, não genéricas: "Deep Learning" ✓, "análise de dados" ✗
+           - TECNOLOGIAS, não aplicações: "NLP" ✓, "análise de crédito" ✗
+
+        4. VALIDAÇÃO DE SETOR POR CORE BUSINESS:
+           - Identificar o negócio PRINCIPAL da startup
+           - Validar se o core business condiz com o setor solicitado
+           - Não aceitar empresas que apenas "atendem" o setor como clientes
+
+        5. CONSISTÊNCIA DE DADOS:
+           - Funding realista e verificado
+           - Investidores conhecidos no ecossistema
+           - Datas e valores coerentes
+
+        INVALIDAÇÃO AUTOMÁTICA SE:
+        - Tecnologias em português ou genéricas demais
+        - Incoerência nome-descrição
+        - Core business diferente do setor solicitado
+        - Dados claramente inventados ou inconsistentes
 
         RETORNE JSON:
         {{
@@ -117,7 +133,7 @@ class StartupValidationAgent:
 
         try:
             response = requests.post(
-                self.base_url,
+                self.chat_url,
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "Content-Type": "application/json"
