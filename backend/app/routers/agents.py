@@ -62,7 +62,38 @@ async def get_task_status(task_id: int, db: Session = Depends(get_db)):
     task = service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task
+
+    # Filtrar output_data para remover informações sensíveis
+    filtered_output = None
+    if task.output_data:
+        filtered_output = {
+            "status": task.output_data.get("status"),
+            "total_tokens": task.output_data.get("total_tokens", 0),
+            "execution_time": task.output_data.get("execution_time", 0),
+            "pipeline_summary": {
+                "discovery_count": len(task.output_data.get("results", {}).get("startup_metrics", [])),
+                "invalid_count": len(task.output_data.get("results", {}).get("invalid_startups", [])),
+                "success": task.output_data.get("status") == "success"
+            }
+        }
+
+        # Adicionar erros se houver
+        if task.output_data.get("errors"):
+            filtered_output["errors"] = task.output_data.get("errors")
+
+    # Retornar task sem dados sensíveis
+    return {
+        "id": task.id,
+        "task_type": task.task_type,
+        "status": task.status,
+        "agent_name": task.agent_name,
+        "input_data": task.input_data,
+        "output_data": filtered_output,
+        "error_message": task.error_message,
+        "started_at": task.started_at,
+        "completed_at": task.completed_at,
+        "created_at": task.created_at
+    }
 
 @router.get("/queue/status")
 async def get_queue_status():

@@ -71,6 +71,10 @@ class StartupValidationAgent:
                 website_valid
             )
 
+        # Obter setor esperado para validação específica
+        expected_sector = startup_data.get('sector', '').lower()
+        sector_examples = self._get_sector_validation_examples(expected_sector)
+
         # Análise final combinando validações técnicas + web (se necessário)
         validation_prompt = f"""
         Valide esta startup combinando verificações técnicas e busca web:
@@ -78,13 +82,16 @@ class StartupValidationAgent:
         DADOS DA STARTUP:
         Nome: {startup_data.get('name')}
         Website: {startup_data.get('website')} (acessível: {'Sim' if website_valid else 'Não'})
-        Setor: {startup_data.get('sector')}
+        Setor Declarado: {startup_data.get('sector')}
+        Descrição: {startup_data.get('description', '')}
         Tecnologias IA: {startup_data.get('ai_technologies', [])} (DEVE ser em inglês)
         Funding: ${startup_data.get('last_funding_amount', 0):,}
         Investidores: {startup_data.get('investor_names')}
         Fontes: {startup_data.get('sources', {})}
 
         {'DADOS DA BUSCA WEB:' + json.dumps(web_validation_data, indent=2) if web_validation_data else 'Busca web não foi necessária.'}
+
+        {sector_examples}
 
         CRITÉRIOS DE VALIDAÇÃO - APLICAR RIGOROSAMENTE:
 
@@ -100,21 +107,35 @@ class StartupValidationAgent:
            - ESPECÍFICAS, não genéricas: "Deep Learning" ✓, "análise de dados" ✗
            - TECNOLOGIAS, não aplicações: "NLP" ✓, "análise de crédito" ✗
 
-        4. VALIDAÇÃO DE SETOR POR CORE BUSINESS:
-           - Identificar o negócio PRINCIPAL da startup
-           - Validar se o core business condiz com o setor solicitado
+        4. VALIDAÇÃO RIGOROSA DE SETOR POR CORE BUSINESS - CRITÉRIO ELIMINATÓRIO:
+           - ANALISAR o negócio PRINCIPAL da startup através de descrição E website
+           - SETOR DEVE SER O CORE BUSINESS, não apenas cliente ou aplicação secundária
+           - EXEMPLOS DE INVALIDAÇÃO POR SETOR:
+             * Se busca "Saúde" mas startup é de pagamentos/fintech → INVALID
+             * Se busca "Agro" mas startup é de marketing digital → INVALID
+             * Se busca "Fintech" mas startup é de análise médica → INVALID
+           - ZERO TOLERÂNCIA: core business diferente = INVALIDAÇÃO AUTOMÁTICA
            - Não aceitar empresas que apenas "atendem" o setor como clientes
 
-        5. CONSISTÊNCIA DE DADOS:
+        5. VALIDAÇÃO CRÍTICA DE VENTURE CAPITAL - OBRIGATÓRIO:
+           - DEVE ter recebido funding de Venture Capital confirmado
+           - Investidores devem ser FUNDOS VC conhecidos (não genéricos)
+           - Funding amount mínimo de $100k
+           - Fontes confiáveis que comprovem o VC funding
+           - REJEITAR se só tem: gov funding, bootstrapping, crowdfunding, angel apenas
+
+        6. CONSISTÊNCIA DE DADOS:
            - Funding realista e verificado
            - Investidores conhecidos no ecossistema
            - Datas e valores coerentes
 
         INVALIDAÇÃO AUTOMÁTICA SE:
+        - SEM VENTURE CAPITAL confirmado (REGRA FUNDAMENTAL)
         - Tecnologias em português ou genéricas demais
         - Incoerência nome-descrição
         - Core business diferente do setor solicitado
         - Dados claramente inventados ou inconsistentes
+        - Apenas funding governamental/crowdfunding/bootstrapping
 
         RETORNE JSON:
         {{
@@ -269,3 +290,89 @@ class StartupValidationAgent:
                 continue
 
         return False
+
+    def _get_sector_validation_examples(self, sector: str) -> str:
+        """Retorna exemplos específicos de validação para cada setor"""
+
+        examples = {
+            "saúde": """
+EXEMPLOS ESPECÍFICOS PARA VALIDAÇÃO DE SETOR SAÚDE:
+
+✓ VÁLIDO para SAÚDE:
+- Análise médica, diagnóstico por imagem, telemedicina
+- Dispositivos médicos, monitoramento de pacientes
+- Prontuários eletrônicos, gestão hospitalar
+- Biotecnologia, pesquisa farmacêutica
+- Plataformas de saúde digital, consultas online
+
+✗ INVÁLIDO para SAÚDE (mesmo que mencionem saúde):
+- Fintechs que fazem pagamentos para clínicas → É FINTECH
+- Marketplaces que vendem produtos de saúde → É E-COMMERCE
+- Plataformas de RH para hospitais → É RH/HR-TECH
+- Seguros de saúde → É INSURTECH
+- Consultorias que atendem hospitais → É CONSULTORIA
+
+REGRA: Se o CORE BUSINESS não é medicina/diagnóstico/tratamento = INVÁLIDO
+""",
+            "health": """
+EXEMPLOS ESPECÍFICOS PARA VALIDAÇÃO DE SETOR HEALTH:
+
+✓ VÁLIDO para HEALTH:
+- Medical analysis, diagnostic imaging, telemedicine
+- Medical devices, patient monitoring
+- Electronic health records, hospital management
+- Biotechnology, pharmaceutical research
+- Digital health platforms, online consultations
+
+✗ INVÁLIDO para HEALTH (mesmo que mencionem health):
+- Fintechs que fazem pagamentos para clínicas → É FINTECH
+- Marketplaces que vendem produtos de saúde → É E-COMMERCE
+- Plataformas de RH para hospitais → É HR-TECH
+- Seguros de saúde → É INSURTECH
+- Consultorias que atendem hospitais → É CONSULTORIA
+
+REGRA: Se o CORE BUSINESS não é medicina/diagnóstico/tratamento = INVÁLIDO
+""",
+            "fintech": """
+EXEMPLOS ESPECÍFICOS PARA VALIDAÇÃO DE SETOR FINTECH:
+
+✓ VÁLIDO para FINTECH:
+- Pagamentos digitais, PIX, cartões, transferências
+- Empréstimos, crédito, financiamentos
+- Investimentos, corretoras, fundos
+- Bancos digitais, contas digitais
+- Seguros digitais (insurtech)
+
+✗ INVÁLIDO para FINTECH:
+- E-commerce que aceita pagamentos → É E-COMMERCE
+- SaaS que cobra assinaturas → É SAAS
+- Startups de outros setores que usam pagamentos → Não é fintech
+
+REGRA: Se o CORE BUSINESS não é serviços financeiros = INVÁLIDO
+""",
+            "agro": """
+EXEMPLOS ESPECÍFICOS PARA VALIDAÇÃO DE SETOR AGRO:
+
+✓ VÁLIDO para AGRO:
+- Agricultura de precisão, monitoramento de plantações
+- Pecuária, manejo de gado, zootecnia
+- Biotecnologia agrícola, sementes, fertilizantes
+- Equipamentos agrícolas, drones para agricultura
+- Gestão agrícola, fazendas inteligentes
+
+✗ INVÁLIDO para AGRO:
+- Fintechs que emprestam para produtores → É FINTECH
+- Marketplaces que vendem insumos → É E-COMMERCE
+- Logística para produtos agrícolas → É LOGÍSTICA
+- Consultorias para agronegócio → É CONSULTORIA
+
+REGRA: Se o CORE BUSINESS não é produção/tecnologia agrícola = INVÁLIDO
+"""
+        }
+
+        return examples.get(sector.lower(), """
+VALIDAÇÃO GERAL DE SETOR:
+- Analisar se o CORE BUSINESS da startup corresponde ao setor declarado
+- Não aceitar empresas que apenas atendem o setor como clientes
+- Verificar se a descrição e atividades principais são do setor correto
+""")

@@ -129,17 +129,23 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
 
     # Verificar se job_id existe antes de referenciar
     valid_job_id = None
+    job_name = None
     if from_worker and job_id:
         from database.models import ScheduledJob
         existing_job = db.query(ScheduledJob).filter(ScheduledJob.id == job_id).first()
         if existing_job:
             valid_job_id = job_id
+            job_name = existing_job.name
         else:
             print(f"WARNING: job_id {job_id} não existe na tabela scheduled_jobs. Usando None.")
 
+    # Usar nome do job ou descrição genérica
+    task_name = job_name if job_name else f"Descoberta Manual - {country}"
+    task_type = f"scheduled_discovery_{sector.lower()}" if from_worker and sector else "manual_discovery"
+
     task_log = TaskLog(
-        task_name=f"Orquestração de Startups - {country}",
-        task_type="startup_discovery",
+        task_name=task_name,
+        task_type=task_type,
         status="started",
         message=f"Iniciando descoberta de startups para {country}" + (f" - Setor: {sector}" if sector else ""),
         scheduled_job_id=valid_job_id,
@@ -159,9 +165,10 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
         service.update_task(task_id, "running")
         print(f"Iniciando orquestração para {country} - {sector or 'todos setores'} - Limit: {limit}")
 
-        # Buscar startups já processadas para contexto
+        # Buscar startups existentes APENAS para exclusão (evitar redescobrir as mesmas)
         existing_valid = service.get_valid_startups_for_context(country, sector)
         existing_invalid = service.get_invalid_startups_for_context(country, sector)
+        print(f"Exclusão: {len(existing_valid)} startups válidas já existem no setor {sector}")
 
         # Create orchestrator and run full pipeline
         # Nota: Sempre criar nova instância para evitar problemas de estado compartilhado
@@ -192,21 +199,29 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             invalid_count = 0
             metrics_count = 0
 
-            for startup_metrics in result.get("results", {}).get("startup_metrics", []):
+            print(f"=== PROCESSANDO {len(result.get('results', {}).get('startup_metrics', []))} STARTUPS VALIDADAS ===")
+            for i, startup_metrics in enumerate(result.get("results", {}).get("startup_metrics", []), 1):
                 startup_data = startup_metrics["startup"]
                 metrics_data = startup_metrics["metrics"]
+                startup_name = startup_data.get('name', 'N/A')
+
+                print(f"Processando startup {i}: {startup_name}")
 
                 try:
                     # Salvar startup
                     saved_startup = service.save_startup_from_discovery(startup_data)
                     valid_count += 1
+                    print(f"Startup {startup_name} salva com sucesso (valid_count: {valid_count})")
 
                     # Salvar métricas
                     service.save_startup_metrics(saved_startup.id, metrics_data)
                     metrics_count += 1
+                    print(f"Métricas salvas para {startup_name} (metrics_count: {metrics_count})")
 
                 except Exception as e:
-                    print(f"Erro ao salvar startup {startup_data.get('name')}: {e}")
+                    print(f"ERRO ao salvar startup {startup_name}: {e}")
+                    import traceback
+                    print(f"Traceback: {traceback.format_exc()}")
 
             # Salvar startups inválidas com insights detalhados
             for invalid_startup in result.get("results", {}).get("invalid_startups", []):
@@ -243,9 +258,10 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
 
             # Criar notificação de sucesso (será enviada no finally)
             from database.models import Notification
+            notification_title = f"{task_name} - Concluída" if job_name else "Descoberta de Startups Concluída"
             notification = Notification(
-                title="Descoberta de Startups Concluída",
-                message=f"Task #{agent_task_id}: Encontradas {valid_count} startups válidas para {country}" + (f" no setor {sector}" if sector else ""),
+                title=notification_title,
+                message=f"Encontradas {valid_count} startups válidas para {country}" + (f" no setor {sector}" if sector else "") + f" ({invalid_count} inválidas)",
                 type="success",
                 task_id=agent_task_id,
                 job_id=valid_job_id
@@ -253,9 +269,11 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
             db.add(notification)
             db.commit()
 
+            print(f"=== RESULTADO FINAL ===")
             print(f"{valid_count} startups válidas salvas")
             print(f"{metrics_count} métricas calculadas")
             print(f"{invalid_count} startups inválidas")
+            print(f"=== FIM DO PROCESSAMENTO ===")
 
         else:
             # Atualizar log de erro
@@ -281,9 +299,10 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
 
             # Criar notificação de erro (será enviada no finally)
             from database.models import Notification
+            notification_title = f"{task_name} - Erro" if job_name else "Erro na Descoberta de Startups"
             notification = Notification(
-                title="Erro na Descoberta de Startups",
-                message=f"Task #{agent_task_id}: Falha na descoberta para {country}: {result.get('error', 'Erro desconhecido')}",
+                title=notification_title,
+                message=f"Falha na descoberta para {country}: {result.get('error', 'Erro desconhecido')}",
                 type="error",
                 task_id=agent_task_id,
                 job_id=valid_job_id
@@ -317,12 +336,13 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
 
         # Criar notificação de erro
         from database.models import Notification
+        notification_title = f"{task_name} - Erro" if job_name else "Erro na Descoberta de Startups"
         notification = Notification(
-            title="Erro na Descoberta de Startups",
-            message=f"Task #{agent_task_id}: Erro na orquestração: {str(e)}",
+            title=notification_title,
+            message=f"Erro na orquestração: {str(e)}",
             type="error",
             task_id=agent_task_id,
-            job_id=job_id if from_worker else None
+            job_id=valid_job_id
         )
         db.add(notification)
         db.commit()
@@ -344,16 +364,7 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
         task_log.completed_at = end_time
         task_log.execution_time = execution_time
 
-        # Criar notificação de erro
-        from database.models import Notification
-        notification = Notification(
-            title="Erro na Descoberta de Startups",
-            message=f"Falha na descoberta para {country}: {str(e)}",
-            type="error",
-            task_id=task_id,
-            job_id=job_id if from_worker else None
-        )
-        db.add(notification)
+        # Notificação já foi criada acima, não duplicar
 
     finally:
         # Salvar todas as alterações e enviar notificação via WebSocket

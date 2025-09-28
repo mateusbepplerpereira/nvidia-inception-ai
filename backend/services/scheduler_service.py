@@ -271,6 +271,15 @@ class SchedulerService:
             if self.scheduler.get_job(str(job.id)):
                 self.scheduler.remove_job(str(job.id))
 
+            # Remover notificações relacionadas primeiro (para evitar foreign key constraint)
+            from database.models import Notification
+            notifications = db.query(Notification).filter(Notification.job_id == job_id).all()
+            for notification in notifications:
+                db.delete(notification)
+
+            if notifications:
+                logger.info(f"Removidas {len(notifications)} notificações relacionadas ao job {job_id}")
+
             # Remove do banco
             db.delete(job)
             db.commit()

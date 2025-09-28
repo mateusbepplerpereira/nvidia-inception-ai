@@ -42,11 +42,12 @@ class AgentService:
         return self.db.query(models.AgentTask).filter(models.AgentTask.id == task_id).first()
 
     def save_startup_from_discovery(self, startup_data: Dict):
-        # Check if startup exists by name or website
-        existing = self.db.query(models.Startup).filter(
-            (models.Startup.name == startup_data.get("name")) |
-            (models.Startup.website == startup_data.get("website"))
-        ).first()
+        # Check if startup exists APENAS por nome (evitar falsos positivos por website)
+        existing = None
+        if startup_data.get("name"):
+            existing = self.db.query(models.Startup).filter(
+                models.Startup.name.ilike(startup_data.get("name"))
+            ).first()
 
         # Preparar sources combinando dados existentes com validação
         sources = startup_data.get("sources", {})
@@ -69,6 +70,7 @@ class AgentService:
 
         if existing:
             # Update existing startup with new data
+            print(f"Atualizando startup existente: {existing.name} (ID: {existing.id})")
             if startup_data.get("website"):
                 existing.website = startup_data.get("website")
             if startup_data.get("sector"):
@@ -96,8 +98,10 @@ class AgentService:
 
             self.db.commit()
             startup = existing
+            print(f"Startup atualizada com sucesso: {existing.name}")
         else:
             # Create new startup
+            print(f"Criando nova startup: {startup_data.get('name', 'N/A')}")
             startup = models.Startup(
                 name=startup_data.get("name"),
                 website=startup_data.get("website"),
@@ -115,7 +119,9 @@ class AgentService:
             self.db.add(startup)
             self.db.commit()
             self.db.refresh(startup)
+            print(f"Nova startup criada: {startup.name} (ID: {startup.id})")
 
+        print(f"==> RESULTADO: {startup.name} (ID: {startup.id}) - Setor: {startup.sector}")
         return startup
 
     def save_analysis(self, startup_id: int, analysis_data: Dict):

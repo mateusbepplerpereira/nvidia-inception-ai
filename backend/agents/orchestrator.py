@@ -138,10 +138,14 @@ class StartupOrchestrator:
             if state.get('sector'):
                 # Query muito específica para país e setor
                 country = state.get('country', 'Brazil')
+                # Query específica para o setor
+                sector_keywords = self._get_sector_keywords(state.get('sector', ''))
+
                 if country.lower() in ['brazil', 'brasil']:
-                    search_query = f"startups brasileiras {state['sector']} Brasil sede Brazilian companies AI artificial intelligence venture capital funding founded Brazil"
+                    search_query = f"startups brasileiras {state['sector']} {sector_keywords} Brasil sede AI venture capital funding healthtech medtech"
                 else:
-                    search_query = f"startups {state['sector']} {country} AI artificial intelligence venture capital funding founded {country}"
+                    search_query = f"startups {state['sector']} {sector_keywords} {country} AI venture capital funding founded {country}"
+
                 sector_constraint = f"""
         RESTRIÇÕES ABSOLUTA DE PAÍS E SETOR - CUMPRIMENTO OBRIGATÓRIO:
 
@@ -153,6 +157,8 @@ class StartupOrchestrator:
 
         SETOR: EXCLUSIVAMENTE startups do setor "{state['sector']}"
         - ZERO TOLERÂNCIA para outros setores
+        - Core business DEVE ser 100% {state['sector']}
+        - NÃO aceitar startups que apenas "atendem" o setor como clientes
         - Se uma startup é de outro setor → REJEITÁ-LA COMPLETAMENTE
         - VALIDAR: o core business deve ser 100% "{state['sector']}"
         - NO CAMPO "sector" usar EXATAMENTE: "{state['sector']}"
@@ -174,29 +180,68 @@ class StartupOrchestrator:
         else:
             geographic_context = "na América Latina"
 
-        # Buscar startups já descobertas para exclusão
-        existing_startups = self._get_existing_startups(state)
+        # Sistema de exclusão inteligente - apenas impedir redescoberta de startups idênticas
+        existing_startups = self._get_context_exclusions(state)
         exclusion_text = self._format_exclusion_list(existing_startups, state.get('sector'))
 
-        # Prompt otimizado para usar WebSearch
+        # Prompt otimizado para DESCOBRIR APENAS STARTUPS COM VC CONFIRMADO
         prompt = f"""
-        Use a ferramenta WebSearch para encontrar EXATAMENTE {state['limit']} startups de IA reais {geographic_context} que receberam funding de VC.
+        Use a ferramenta WebSearch para descobrir EXATAMENTE {state['limit']} startups de IA reais {geographic_context} que COMPROVADAMENTE receberam funding de VC.
 
-        QUERY PARA BUSCAR: "{search_query}"
+        METODOLOGIA OBRIGATÓRIA PARA CADA STARTUP:
+        1º) Encontre startups de IA do setor/região
+        2º) Para CADA startup, busque especificamente: "[nome] venture capital funding investors"
+        3º) Confirme em fontes confiáveis: Crunchbase, TechCrunch, sites de VC
+        4º) SE NÃO ACHAR VC CONFIRMADO = DESCARTE e busque outra
+        5º) APENAS inclua na lista se VC estiver 100% confirmado
+
+        REGRA FUNDAMENTAL - VENTURE CAPITAL OBRIGATÓRIO:
+        TODAS as startups descobertas DEVEM ter recebido funding de Venture Capital confirmado.
+        NÃO incluir startups que só receberam:
+        - Funding governamental, subsídios ou editais públicos
+        - Bootstrapping ou autofinanciamento
+        - Crowdfunding ou financiamento coletivo
+        - Apenas angel investment sem VC follow-up
+        - Aceleradoras sem VC confirmado
+
+        APENAS incluir startups com:
+        - Rounds de VC confirmados (Seed, Series A, B, C...)
+        - Fundos de Venture Capital conhecidos como investidores
+        - Investment comprovado em bases como Crunchbase/Distrito
+        - Nomes específicos de fundos VC (não genéricos)
+
+        QUERIES ESPECÍFICAS POR SETOR (OBRIGATORIAMENTE usar o setor {state.get('sector', '')}):
+        1. "{search_query} {state.get('sector', '')} venture capital funding"
+        2. "startups {state.get('sector', '')} Brasil VC healthtech medtech"
+        3. "AI {state.get('sector', '')} Brasil artificial intelligence venture capital"
+        4. "healthtech medical AI startups Brasil crunchbase funding"
 
         {exclusion_text}
 
-        PRIORIDADE DE BUSCA (busque primeiro nessas fontes CONFIÁVEIS):
-        1. FONTES PRIMÁRIAS: neofeed.com.br, brasiljorney.com.br, startup.com.br, crunchbase.com, techcrunch.com
-        2. MÍDIA BRASILEIRA: valor.globo.com, exame.com, abstartups.com.br
-        3. BASES DE DADOS: pitchbook.com, angellist.com
-        4. Apenas se não encontrar suficientes, use outras fontes
+        FONTES CONFIÁVEIS PARA CONFIRMAR VC (use para validar CADA startup):
+        1. BASES OFICIAIS: crunchbase.com, pitchbook.com, dealroom.co
+        2. VC BRASILEIROS: distrito.me, neofeed.com.br, brasiljorney.com.br
+        3. MÍDIA TECH: techcrunch.com, venturebeat.com, valor.globo.com
+        4. SITES DE VC: sites oficiais dos fundos VC brasileiros
+
+        FUNDOS VC BRASILEIROS CONHECIDOS (para referência):
+        Monashees, Kaszek, Canary, Redpoint e.ventures, Valor Capital, SP Ventures
 
         {sector_constraint}
         {exclusion_context}
 
+        REGRA DE QUALIDADE - PREFERÊNCIA POR MENOS COM VC:
+        - Melhor descobrir 1-2 startups COM VC confirmado
+        - Do que descobrir 5 startups SEM VC confirmado
+        - SE não encontrar {state['limit']} com VC, retorne menos
+        - JAMAIS "inventar" ou "assumir" que uma startup tem VC
+
         OBRIGATÓRIO - WEBSITE OFICIAL REAL VIA WEBSEARCH:
-        - JAMAIS INVENTAR URLs ou adicionar .com.br automaticamente
+        - Use WebSearch para encontrar o website OFICIAL de cada startup
+        - Busque especificamente: "[nome da startup] site oficial website"
+        - JAMAIS INVENTAR URLs ou adicionar .com.br/.com automaticamente
+        - Se não encontrar website via busca, deixar campo "website" como null
+        - APENAS usar websites que você encontrou através de busca web
         - USAR WebSearch para buscar: "[nome_startup] site oficial website url"
         - VERIFICAR em múltiplas fontes: matérias, perfis LinkedIn, diretórios
         - CONFIRMAR URL exato encontrado nas buscas
@@ -258,6 +303,8 @@ class StartupOrchestrator:
             "city": "Cidade",
             "description": "Descrição verificada da startup",
             "has_venture_capital": true,
+            "funding_round": "Series A",
+            "funding_date": "2023",
             "sources": {{
               "funding": ["URL fonte de funding"],
               "validation": ["URL de validação"]
@@ -373,6 +420,54 @@ class StartupOrchestrator:
             logger.info(f"JSON corrigido (primeiros 200 chars): {content[:200]}...")
 
             startups = json.loads(content)
+
+            # FILTRO DUPLO: Remover startups SEM VC e SETOR ERRADO
+            original_count = len(startups)
+            filtered_startups = []
+            expected_sector = state.get('sector', '')
+
+            for startup in startups:
+                startup_name = startup.get('name', 'N/A')
+                startup_sector = startup.get('sector', '')
+                has_vc = startup.get('has_venture_capital', False)
+                investor_names = startup.get('investor_names', '')
+                funding_amount = startup.get('last_funding_amount', 0)
+                description = startup.get('description', '')
+
+                # FILTRO 1: Verificar SETOR (primeira validação básica)
+                sector_ok = True
+                if expected_sector:
+                    # Verificar se o setor bate (comparação simples)
+                    sector_match = (
+                        startup_sector.lower().strip() == expected_sector.lower().strip() or
+                        expected_sector.lower() in startup_sector.lower()
+                    )
+
+                    if not sector_match:
+                        sector_ok = False
+                        logger.warning(f"SETOR ERRADO: {startup_name} ({startup_sector}) descartada - esperado {expected_sector}")
+                    else:
+                        logger.info(f"SETOR OK: {startup_name} ({startup_sector}) aprovado para {expected_sector}")
+
+                # FILTRO 2: Verificar apenas VC (setor fica para o validation_agent)
+                vc_ok = (
+                    has_vc and
+                    investor_names and
+                    investor_names not in ['N/A', 'n/a', 'unknown', 'none', ''] and
+                    funding_amount and funding_amount >= 100000
+                )
+
+                # APENAS incluir se passou nos dois filtros (setor + VC)
+                if sector_ok and vc_ok:
+                    filtered_startups.append(startup)
+                    logger.info(f"APROVADA: {startup_name} - Setor: {startup_sector} - VC: {investor_names} - ${funding_amount:,}")
+                elif not sector_ok:
+                    logger.warning(f"REJEITADA POR SETOR: {startup_name}")
+                else:
+                    logger.warning(f"REJEITADA SEM VC: {startup_name}")
+
+            startups = filtered_startups
+            logger.info(f"=== FILTRO DUPLO: {original_count} -> {len(startups)} startups (setor + VC, validation_agent fará segunda validação) ===")
 
             # Garantir limite
             if len(startups) > state['limit']:
@@ -513,49 +608,62 @@ RESPOSTA: JSON array apenas."""},
             logger.error(f"Exceção na requisição WebSearch: {str(e)}")
             return {"error": f"WebSearch Request error: {str(e)}"}
 
+    def _get_sector_keywords(self, sector: str) -> str:
+        """Retorna keywords específicas para cada setor"""
+        sector_map = {
+            "Saúde": "medical healthcare medtech health hospital clínica medicina telemedicine diagnosis",
+            "Health": "medical healthcare medtech health hospital clinic medicine telemedicine diagnosis",
+            "Fintech": "financial banking payments credit card fintech finance digital wallet",
+            "Agro": "agriculture farming agtech rural crops livestock precision agriculture",
+            "Educação": "education edtech learning school university online courses e-learning",
+            "Logística": "logistics transportation delivery supply chain shipping freight",
+            "Energia": "energy renewable solar wind electricity power grid smart energy",
+            "Varejo": "retail e-commerce marketplace shopping consumer goods fashion"
+        }
+        return sector_map.get(sector, "technology AI artificial intelligence")
+
+    def _get_context_exclusions(self, state: OrchestrationState) -> list:
+        """ISOLAMENTO DE CONTEXTO: Usa APENAS startups do contexto passado, nunca do banco"""
+        exclusions = []
+
+        # Adicionar startups válidas do contexto (já filtradas por setor no agent_service)
+        for startup in state.get('valid_startups', []):
+            if isinstance(startup, dict) and startup.get('name'):
+                exclusions.append((startup['name'], state.get('sector', 'Unknown')))
+
+        # Adicionar startups inválidas do contexto
+        for startup in state.get('invalid_startups', []):
+            if isinstance(startup, dict) and startup.get('name'):
+                exclusions.append((startup['name'], state.get('sector', 'Unknown')))
+
+        logger.info(f"EXCLUSION CONTEXT: {len(exclusions)} startups para excluir do setor {state.get('sector')}")
+        return exclusions
+
     def _get_existing_startups(self, state: OrchestrationState) -> list:
-        """Busca startups já descobertas para evitar duplicação"""
-        try:
-            from database.connection import get_db
-            from database.models import Startup
-
-            db = next(get_db())
-
-            # Se há setor especificado, buscar apenas do mesmo setor
-            if state.get('sector'):
-                existing = db.query(Startup.name, Startup.sector).filter(
-                    Startup.sector.ilike(f"%{state['sector']}%")
-                ).limit(100).all()
-            else:
-                # Se não há setor, buscar todas
-                existing = db.query(Startup.name, Startup.sector).limit(200).all()
-
-            db.close()
-            return [(startup.name, startup.sector) for startup in existing]
-
-        except Exception as e:
-            logger.error(f"Erro ao buscar startups existentes: {e}")
-            return []
+        """MÉTODO DEPRECIADO - NÃO USAR PARA EVITAR CONTAMINAÇÃO DE CONTEXTO"""
+        logger.warning(f"Método _get_existing_startups foi chamado para setor {state.get('sector')} - ISSO PODE CAUSAR CONTAMINAÇÃO!")
+        return []
 
     def _format_exclusion_list(self, existing_startups: list, sector: str = None) -> str:
-        """Formata lista de exclusão para o prompt"""
+        """Formata lista de exclusão para o prompt - APENAS para evitar redescoberta"""
         if not existing_startups:
             return ""
 
         if sector:
-            # Filtrar apenas startups do mesmo setor
+            # Filtrar apenas startups do mesmo setor por NOME EXATO
             sector_startups = [name for name, startup_sector in existing_startups
-                             if startup_sector and sector.lower() in startup_sector.lower()]
+                             if startup_sector and startup_sector.lower() == sector.lower()]
 
             if sector_startups:
-                startup_list = "\n".join([f"- {name}" for name in sector_startups[:20]])  # Limitar a 20
+                startup_list = "\n".join([f"- {name}" for name in sector_startups[:10]])  # Limitar a 10
                 return f"""
-        EXCLUSÃO OBRIGATÓRIA - STARTUPS JÁ CADASTRADAS NO SETOR {sector.upper()}:
-        NÃO BUSCAR as seguintes startups pois já foram descobertas:
+        EVITAR REDESCOBERTA - STARTUPS JÁ CADASTRADAS NO SETOR {sector.upper()}:
+        As seguintes startups JÁ ESTÃO no banco de dados:
         {startup_list}
 
-        IMPORTANTE: Se encontrar qualquer uma dessas startups na busca, DESCARTÁ-LA imediatamente.
-        Busque APENAS startups NOVAS que não estão nesta lista.
+        IMPORTANTE: NÃO descobrir novamente essas startups que já existem.
+        Busque APENAS startups DIFERENTES e NOVAS que não estão nesta lista.
+        Foque em encontrar outras startups do setor que ainda não foram descobertas.
         """
         else:
             # Para busca sem setor específico, mostrar todas por setor
@@ -604,7 +712,25 @@ RESPOSTA: JSON array apenas."""},
     def _validate_startup_sources(self, startup: Dict[str, Any]) -> Dict[str, Any]:
         """Validar se as fontes fornecidas são confiáveis"""
 
+        # Verificação de tipo para evitar erro quando startup vem como string
+        if isinstance(startup, str):
+            logger.error(f"Startup veio como string ao invés de dict: {startup}")
+            return {
+                "is_reliable": False,
+                "reliability_score": 0,
+                "issues": ["Formato de dados inválido"]
+            }
+
         sources = startup.get("sources", {})
+
+        # PROTEÇÃO: Verificar se sources é dict (pode vir como lista por erro)
+        if isinstance(sources, list):
+            logger.warning(f"Sources veio como lista para {startup.get('name')}: {sources}")
+            sources = {}  # Converter para dict vazio se vier como lista
+        elif not isinstance(sources, dict):
+            logger.warning(f"Sources tem tipo incorreto para {startup.get('name')}: {type(sources)}")
+            sources = {}
+
         reliability_score = 0
         issues = []
         validated_sources = {}
@@ -783,10 +909,40 @@ RESPOSTA: JSON array apenas."""},
 
         return state
 
-    def _validate_startup_thoroughly(self, startup: Dict[str, Any], state: OrchestrationState = None) -> Dict[str, Any]:
-        """Validação rigorosa de startup com scoring detalhado"""
+    def _validate_startup_thoroughly(self, startup: Dict[str, Any], state: OrchestrationState) -> Dict[str, Any]:
+        """Validação rigorosa de startup com scoring detalhado E VERIFICAÇÃO DE CONTEXTO"""
         issues = []
         validation_scores = {}
+
+        # VALIDAÇÃO CRÍTICA DE SETOR - REJEITAR SE INCORRETO
+        expected_sector = state.get('sector', '')
+        startup_sector = startup.get('sector', '')
+        startup_name = startup.get('name', 'N/A')
+        startup_description = startup.get('description', '')
+
+        if expected_sector:
+            # Verificar se o setor da startup corresponde ao esperado
+            sector_match = (
+                startup_sector.lower() == expected_sector.lower() or
+                expected_sector.lower() in startup_sector.lower()
+            )
+
+            # Validar pela descrição se o core business é realmente do setor
+            sector_keywords = self._get_sector_keywords(expected_sector).split()
+            description_lower = startup_description.lower()
+            keyword_matches = sum(1 for keyword in sector_keywords if keyword.lower() in description_lower)
+
+            if not sector_match:
+                issues.append(f"REJEITADA: Setor incorreto - esperado {expected_sector}, encontrado {startup_sector}")
+                validation_scores['sector_match_score'] = 0
+                logger.warning(f"SETOR INCORRETO: {startup_name} é {startup_sector}, mas busca era para {expected_sector}")
+            elif keyword_matches < 2:  # Mínimo 2 keywords do setor na descrição
+                issues.append(f"REJEITADA: Descrição não condiz com setor {expected_sector}")
+                validation_scores['sector_match_score'] = 0
+                logger.warning(f"DESCRIÇÃO INCOMPATÍVEL: {startup_name} - apenas {keyword_matches} keywords de {expected_sector}")
+            else:
+                validation_scores['sector_match_score'] = 100
+                logger.info(f"SETOR OK: {startup_name} - {expected_sector}")
 
         # Deixar o agente de IA fazer a validação de setor
 
@@ -796,10 +952,36 @@ RESPOSTA: JSON array apenas."""},
         if not website_valid:
             issues.append("Website inacessível ou inválido")
 
-        # Validar fontes de funding
+        # VALIDAÇÃO CRÍTICA DE VENTURE CAPITAL
         funding_sources = startup.get("sources", {}).get("funding", [])
+        investor_names = startup.get("investor_names", "")
+        funding_amount = startup.get("last_funding_amount", 0)
+        has_vc = startup.get("has_venture_capital", False)
+
+        # Normalizar investor_names (pode ser string ou lista)
+        if isinstance(investor_names, list):
+            investor_names_str = ", ".join(investor_names) if investor_names else ""
+        else:
+            investor_names_str = str(investor_names) if investor_names else ""
+
+        # Verificar se tem VC confirmado
+        if not has_vc:
+            issues.append("REJEITADA: Startup sem Venture Capital confirmado")
+            validation_scores["vc_funding_score"] = 0
+        elif not investor_names_str or investor_names_str.lower() in ['n/a', 'unknown', 'none', '']:
+            issues.append("REJEITADA: Sem nomes de investidores VC específicos")
+            validation_scores["vc_funding_score"] = 0
+        elif not funding_amount or funding_amount < 100000:  # Mínimo 100k
+            issues.append("REJEITADA: Funding amount muito baixo ou inexistente")
+            validation_scores["vc_funding_score"] = 0
+        elif not funding_sources:
+            issues.append("REJEITADA: Sem fontes que comprovem o VC funding")
+            validation_scores["vc_funding_score"] = 0
+        else:
+            validation_scores["vc_funding_score"] = 100
+
+        # Validar fontes de funding
         if not funding_sources:
-            issues.append("Sem fontes confiáveis para funding")
             validation_scores["funding_sources_score"] = 0
         else:
             validation_scores["funding_sources_score"] = 100
@@ -966,16 +1148,24 @@ RESPOSTA: JSON array apenas."""},
 
     def _calculate_startup_metrics(self, startup: Dict[str, Any]) -> Dict[str, Any]:
         """Calcular métricas de score para a startup"""
+        # Garantir que valores não sejam None para evitar erro de formatação
+        name = startup.get('name') or 'N/A'
+        sector = startup.get('sector') or 'N/A'
+        ai_technologies = startup.get('ai_technologies') or []
+        funding_amount = startup.get('last_funding_amount') or 0
+        investor_names = startup.get('investor_names') or 'N/A'
+        country = startup.get('country') or 'N/A'
+
         prompt = f"""
         Analise esta startup validada e calcule scores de 0-100 para as métricas. Seja criterioso e realista.
 
-        STARTUP: {startup.get('name')}
-        Setor: {startup.get('sector')}
-        Tecnologias IA: {startup.get('ai_technologies')}
-        Funding: ${startup.get('last_funding_amount', 0):,}
-        Investidores: {startup.get('investor_names')}
-        País: {startup.get('country')}
-        Cidade: {startup.get('city')}
+        STARTUP: {name}
+        Setor: {sector}
+        Tecnologias IA: {ai_technologies}
+        Funding: ${funding_amount:,}
+        Investidores: {investor_names}
+        País: {country}
+        Cidade: {startup.get('city') or 'N/A'}
 
         CRITÉRIOS DE ANÁLISE (baseado nas tecnologias ESPECÍFICAS da startup):
         1. MARKET_DEMAND (0-100): Demanda do mercado
@@ -1156,7 +1346,10 @@ RESPOSTA: JSON array apenas."""},
     def run_orchestration(self, country: str, sector: str = None, limit: int = 5,
                          existing_valid: List = None, existing_invalid: List = None,
                          search_strategy: str = "specific") -> Dict[str, Any]:
-        """Executar orquestração completa"""
+        """Executar orquestração completa com ISOLAMENTO TOTAL DE CONTEXTO"""
+
+        # Inicialização da orquestração
+        logger.info(f"Iniciando orquestração: {country} - {sector} - Limite: {limit}")
 
         initial_state = OrchestrationState(
             country=country,
@@ -1178,17 +1371,14 @@ RESPOSTA: JSON array apenas."""},
 
         try:
             # Executar grafo
-            logger.info(f"=== EXECUTANDO LANGGRAPH === - Limite: {limit}")
-            logger.info(f"Estado inicial - limit: {initial_state.get('limit')}, sector: {initial_state.get('sector')}")
-            logger.info(f"Tipo do self.graph: {type(self.graph)}")
+            # Executando LangGraph
+            logger.info(f"Executando pipeline - limite: {limit}, setor: {initial_state.get('sector')}")
 
             try:
                 final_state = self.graph.invoke(initial_state)
-                logger.info(f"=== LANGGRAPH CONCLUÍDO ===")
+                logger.info(f"Pipeline concluído com sucesso")
             except Exception as graph_error:
-                logger.error(f"=== ERRO NO LANGGRAPH ===")
-                logger.error(f"Tipo do erro: {type(graph_error)}")
-                logger.error(f"Mensagem: {str(graph_error)}")
+                logger.error(f"Erro no pipeline: {str(graph_error)}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 raise graph_error

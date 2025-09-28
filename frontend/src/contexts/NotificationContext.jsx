@@ -17,6 +17,24 @@ export const NotificationProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [socket, setSocket] = useState(null);
 
+  const loadNotifications = useCallback(async () => {
+    try {
+      const data = await notificationsService.getNotifications(50, 0);
+      setNotifications(data);
+    } catch (error) {
+      console.error('Erro ao carregar notificações:', error);
+    }
+  }, []);
+
+  const loadUnreadCount = useCallback(async () => {
+    try {
+      const data = await notificationsService.getUnreadCount();
+      setUnreadCount(data.unread_count);
+    } catch (error) {
+      console.error('Erro ao carregar contagem não lidas:', error);
+    }
+  }, []);
+
   const connectWebSocket = useCallback(() => {
     if (socket) {
       socket.close();
@@ -33,9 +51,22 @@ export const NotificationProvider = ({ children }) => {
     newSocket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'notification') {
-        // Adiciona nova notificação
-        setNotifications(prev => [data.data, ...prev]);
-        setUnreadCount(prev => prev + 1);
+        // Verifica se a notificação já existe para evitar duplicatas
+        setNotifications(prev => {
+          const exists = prev.some(n => n.id === data.data.id);
+          if (exists) {
+            console.log(`Notificação ${data.data.id} já existe, ignorando duplicata`);
+            return prev;
+          }
+
+          // Adiciona nova notificação apenas se não existir
+          console.log(`Adicionando nova notificação via WebSocket: ${data.data.id}`);
+
+          return [data.data, ...prev];
+        });
+
+        // Atualiza contador via API para ter valor correto
+        loadUnreadCount();
 
         // Mostra notificação do navegador se permitido
         if (Notification.permission === 'granted') {
@@ -64,25 +95,7 @@ export const NotificationProvider = ({ children }) => {
     };
 
     setSocket(newSocket);
-  }, [socket]);
-
-  const loadNotifications = useCallback(async () => {
-    try {
-      const data = await notificationsService.getNotifications(50, 0);
-      setNotifications(data);
-    } catch (error) {
-      console.error('Erro ao carregar notificações:', error);
-    }
-  }, []);
-
-  const loadUnreadCount = useCallback(async () => {
-    try {
-      const data = await notificationsService.getUnreadCount();
-      setUnreadCount(data.unread_count);
-    } catch (error) {
-      console.error('Erro ao carregar contagem não lidas:', error);
-    }
-  }, []);
+  }, [socket, loadUnreadCount]);
 
   const markAsRead = useCallback(async (notificationId) => {
     try {

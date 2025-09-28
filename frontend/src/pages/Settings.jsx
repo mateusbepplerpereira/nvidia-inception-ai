@@ -294,11 +294,11 @@ function Settings() {
       {/* Modal para Criar/Editar Task */}
       {showModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
           onClick={() => setShowModal(false)}
         >
           <div
-            className="bg-nvidia-gray rounded-lg w-full max-w-2xl h-[90vh] flex flex-col"
+            className="bg-nvidia-gray rounded-lg w-full max-w-2xl h-[90vh] flex flex-col m-4"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header do Modal */}
@@ -317,7 +317,7 @@ function Settings() {
 
             {/* Conteúdo Scrollável */}
             <div className="flex-1 overflow-y-auto modal-scroll">
-              <form id="task-form" onSubmit={handleSubmit} className="p-4 space-y-3">
+              <form id="task-form" onSubmit={handleSubmit} className="p-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Nome

@@ -286,7 +286,6 @@ function Logs() {
                     <td className="px-4 py-4">
                       <div>
                         <p className="text-white font-medium">{log.task_name}</p>
-                        <p className="text-gray-400 text-sm">{log.task_type}</p>
                       </div>
                     </td>
                     <td className="px-4 py-4">
