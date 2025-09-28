@@ -184,9 +184,15 @@ class StartupOrchestrator:
         existing_startups = self._get_context_exclusions(state)
         exclusion_text = self._format_exclusion_list(existing_startups, state.get('sector'))
 
+        # Adicionar timestamp para forçar diferentes consultas
+        import time
+        current_time = int(time.time())
+
         # Prompt otimizado para DESCOBRIR APENAS STARTUPS COM VC CONFIRMADO
         prompt = f"""
         Use a ferramenta WebSearch para descobrir EXATAMENTE {state['limit']} startups de IA reais {geographic_context} que COMPROVADAMENTE receberam funding de VC.
+
+        IMPORTANTE: Esta é uma busca de {current_time} - procure por startups DIFERENTES das buscas anteriores.
 
         METODOLOGIA OBRIGATÓRIA PARA CADA STARTUP:
         1º) Encontre startups de IA do setor/região
@@ -211,12 +217,29 @@ class StartupOrchestrator:
         - Nomes específicos de fundos VC (não genéricos)
 
         QUERIES ESPECÍFICAS POR SETOR (OBRIGATORIAMENTE usar o setor {state.get('sector', '')}):
-        1. "{search_query} {state.get('sector', '')} venture capital funding"
-        2. "startups {state.get('sector', '')} Brasil VC healthtech medtech"
-        3. "AI {state.get('sector', '')} Brasil artificial intelligence venture capital"
-        4. "healthtech medical AI startups Brasil crunchbase funding"
+        1. "{search_query} {state.get('sector', '')} venture capital funding 2024 2023"
+        2. "startups {state.get('sector', '')} Brasil VC novos emergentes"
+        3. "AI {state.get('sector', '')} Brasil artificial intelligence recentes"
+        4. "nuevas {state.get('sector', '')} startups Brasil diferentes inovadoras"
+        5. "empresas {state.get('sector', '')} tecnologia VC série A seed brasil"
+
+        ESTRATÉGIA DE BUSCA DIVERSIFICADA:
+        - Use termos como "novos", "emergentes", "recentes", "diferentes"
+        - Busque em fontes diferentes a cada consulta
+        - Varie os termos de busca para evitar resultados repetidos
+        - Inclua anos recentes (2023, 2024) para startups mais novas
 
         {exclusion_text}
+
+        ⚠️ EXCLUSÃO CRÍTICA - NÃO INCLUIR ESTAS STARTUPS JÁ CONHECIDAS:
+        - netLex (já descoberta anteriormente)
+        - Voa Health (já descoberta anteriormente)
+        - SciCrop (já descoberta anteriormente)
+        - DataStone (já descoberta anteriormente)
+        - Magie (já descoberta anteriormente)
+
+        BUSQUE STARTUPS COMPLETAMENTE DIFERENTES dessas listadas acima.
+        Se uma dessas aparecer na busca, IGNORE e procure outras novas.
 
         FONTES CONFIÁVEIS PARA CONFIRMAR VC (use para validar CADA startup):
         1. BASES OFICIAIS: crunchbase.com, pitchbook.com, dealroom.co
@@ -530,7 +553,7 @@ RESPOSTA: JSON array apenas."""},
                     "type": "web_search_preview"
                 }
             ],
-            "temperature": 0.1,  # Baixa temperatura para menos alucinações
+            "temperature": 0.7,  # Alta temperatura para mais diversidade e menos repetição
             "max_output_tokens": max_tokens
         }
 
@@ -1320,7 +1343,7 @@ RESPOSTA: JSON array apenas."""},
             "model": model_without_search,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens,
-            "temperature": 0.1
+            "temperature": 0.7
         }
 
         try:
