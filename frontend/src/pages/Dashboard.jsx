@@ -310,7 +310,7 @@ function Dashboard() {
 
         {/* Top Technologies - Full Width */}
         <div className="bg-nvidia-gray rounded-lg p-6 md:col-span-2">
-          <h2 className="text-xl font-semibold text-white mb-4">Tecnologias de IA Mais Utilizadas</h2>
+          <h2 className="text-xl font-semibold text-white mb-4">Tecnologias Mais Utilizadas</h2>
           <ResponsiveContainer width="100%" height={350}>
             <BarChart data={stats.topTechnologies} margin={{ bottom: 120 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#4A4A4A" />
