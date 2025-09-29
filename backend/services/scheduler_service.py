@@ -2,8 +2,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from database.connection import get_db
-from database.models import ScheduledJob, TaskLog, Notification
+from database.models import ScheduledJob, TaskLog, Notification, Startup
 # Imports removidos para evitar dependências circulares - serão importados localmente quando necessário
 import asyncio
 import logging
@@ -92,6 +93,8 @@ class SchedulerService:
             result = None
             if job.task_type == "startup_discovery":
                 result = await self._execute_startup_discovery_task(job_id)
+            elif job.task_type == "newsletter":
+                result = await self._execute_newsletter_task(job_id)
 
             end_time = datetime.now()
             execution_time = (end_time - start_time).total_seconds()
@@ -104,6 +107,9 @@ class SchedulerService:
 
             logger.info(f"Job '{job.name}' executado com sucesso em {execution_time:.2f}s")
 
+            # Envia notificação via WebSocket após job completar
+            await self._send_job_completion_notification(job_id, "success", execution_time)
+
         except Exception as e:
             end_time = datetime.now()
             execution_time = (end_time - start_time).total_seconds()
@@ -111,6 +117,9 @@ class SchedulerService:
             db.commit()
 
             logger.error(f"Erro na execução do job '{job.name}': {e}")
+
+            # Envia notificação de erro via WebSocket
+            await self._send_job_completion_notification(job_id, "error", execution_time, str(e))
 
         finally:
             db.close()
@@ -160,6 +169,193 @@ class SchedulerService:
             return {"status": "success", "message": "Task enqueued"}
         except Exception as e:
             raise e
+
+    async def _execute_newsletter_task(self, job_id: int):
+        """Executa tarefa de newsletter - chama descoberta E DEPOIS envia email com resultados"""
+        try:
+            # Busca configuração do job
+            db = next(get_db())
+            job = db.query(ScheduledJob).filter(ScheduledJob.id == job_id).first()
+            if not job:
+                raise ValueError("Job não encontrado")
+
+            config = job.task_config or {}
+
+            # 1. Executa descoberta ASSÍNCRONA e aguarda resultado REAL
+            logger.info("Executando descoberta de startups para newsletter...")
+
+            # Primeiro enfileira a descoberta (mantém assíncrono)
+            discovery_result = await self._execute_startup_discovery_task(job_id)
+            logger.info(f"Discovery task enfileirada: {discovery_result}")
+
+            # 2. Aguarda REALMENTE a tarefa completar checando o banco
+            import asyncio
+            logger.info("Aguardando descoberta completar...")
+
+            max_wait = 120  # 2 minutos máximo
+            check_interval = 5  # verifica a cada 5 segundos
+            elapsed = 0
+
+            while elapsed < max_wait:
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
+
+                # Verifica se há startups processadas recentemente (última 1 minuto)
+                recent_time = datetime.now() - timedelta(minutes=1)
+                recent_count = db.query(Startup).filter(
+                    or_(
+                        Startup.created_at >= recent_time,
+                        Startup.updated_at >= recent_time
+                    )
+                ).count()
+
+                logger.info(f"Aguardando descoberta... {elapsed}s - Startups recentes: {recent_count}")
+
+                if recent_count > 0:
+                    logger.info("Startups detectadas! Prosseguindo...")
+                    break
+
+            if elapsed >= max_wait:
+                logger.warning("Timeout aguardando descoberta")
+
+            logger.info("Descoberta aguardada, buscando resultados...")
+
+            # 3. Agora busca as startups que foram processadas
+            from database.models import StartupMetrics
+
+            # Busca startups processadas nos últimos 3 minutos (janela maior para async)
+            cutoff_recent = datetime.now() - timedelta(minutes=3)
+
+            query = db.query(Startup).outerjoin(StartupMetrics)
+
+            # Aplica filtros da configuração
+            if config.get("country"):
+                query = query.filter(Startup.country.ilike(f"%{config['country']}%"))
+            if config.get("sector"):
+                query = query.filter(Startup.sector.ilike(f"%{config['sector']}%"))
+
+            # Busca startups descobertas AGORA
+            recent_startups = query.filter(
+                or_(
+                    Startup.created_at >= cutoff_recent,
+                    Startup.updated_at >= cutoff_recent
+                )
+            ).order_by(
+                StartupMetrics.total_score.desc().nullslast(),
+                Startup.created_at.desc()
+            ).all()
+
+            startup_count_real = len(recent_startups)
+            logger.info(f"Encontradas {startup_count_real} startups para incluir no email")
+
+            # 4. Prepara dados para email
+            startup_data_for_email = []
+            for startup in recent_startups:
+                metrics = startup.metrics[0] if startup.metrics else None
+                startup_data_for_email.append({
+                    "name": startup.name or "N/A",
+                    "sector": startup.sector or "N/A",
+                    "country": startup.country or "N/A",
+                    "city": startup.city or "N/A",
+                    "founded_year": startup.founded_year or "N/A",
+                    "website": startup.website or "N/A",
+                    "description": startup.description[:150] + "..." if startup.description and len(startup.description) > 150 else (startup.description or "N/A"),
+                    "ai_technologies": ", ".join(startup.ai_technologies) if startup.ai_technologies else "N/A",
+                    "total_score": f"{metrics.total_score:.1f}" if metrics and metrics.total_score else "0.0"
+                })
+
+            # 5. Busca emails ativos e envia newsletter
+            from database.models import NewsletterEmail, NewsletterSent
+            emails = db.query(NewsletterEmail).filter(NewsletterEmail.is_active == True).all()
+
+            if not emails:
+                logger.warning("Nenhum email ativo encontrado na newsletter")
+                return {"status": "warning", "message": "Nenhum email para enviar"}
+
+            if startup_count_real == 0:
+                logger.warning("Nenhuma startup encontrada para incluir no relatório")
+                return {"status": "warning", "message": "Nenhuma startup encontrada"}
+
+            # 6. Envia emails
+            logger.info(f"Enviando newsletter para {len(emails)} destinatários...")
+            from services.email_service import EmailService
+
+            email_service = EmailService()
+            email_addresses = [email.email for email in emails]
+
+            success = email_service.send_newsletter_report(
+                recipients=email_addresses,
+                startup_data=startup_data_for_email,
+                startup_count=startup_count_real
+            )
+
+            if success:
+                # 7. Registra envios
+                for email in emails:
+                    newsletter_sent = NewsletterSent(
+                        job_id=job_id,
+                        email=email.email,
+                        report_data={
+                            "startup_count": startup_count_real,
+                            "config": config,
+                            "discovery_result": discovery_result,
+                            "sent_at": datetime.now().isoformat()
+                        }
+                    )
+                    db.add(newsletter_sent)
+
+                db.commit()
+                logger.info(f"Newsletter enviada com sucesso para {len(emails)} destinatários")
+                return {"status": "success", "recipients": len(emails), "startups": startup_count_real}
+            else:
+                return {"status": "error", "message": "Falha no envio"}
+
+        except Exception as e:
+            logger.error(f"Erro na execução da newsletter: {e}")
+            raise e
+        finally:
+            if 'db' in locals():
+                db.close()
+
+    async def _send_job_completion_notification(self, job_id: int, status: str, execution_time: float, error_msg: str = None):
+        """Envia notificação via WebSocket quando job completa"""
+        try:
+            from services.notification_service import notification_service
+            from database.models import ScheduledJob
+
+            db = next(get_db())
+            job = db.query(ScheduledJob).filter(ScheduledJob.id == job_id).first()
+
+            if not job:
+                return
+
+            if status == "success":
+                title = f"{job.name} - Concluída"
+                message = f"Task executada com sucesso"
+                notification_type = "success"
+            else:
+                title = f"{job.name} - Erro"
+                message = f"Erro na execução: {error_msg}"
+                notification_type = "error"
+
+            # Enviar via WebSocket
+            notification_data = {
+                "id": None,  # Será definido depois se necessário
+                "title": title,
+                "message": message,
+                "type": notification_type,
+                "is_read": False,
+                "created_at": datetime.now().isoformat()
+            }
+
+            await notification_service.send_notification_data(notification_data)
+            logger.info(f"Notificação WebSocket enviada: {title}")
+
+        except Exception as e:
+            logger.error(f"Erro ao enviar notificação WebSocket: {e}")
+        finally:
+            if 'db' in locals():
+                db.close()
 
     def _get_interval_seconds(self, job: ScheduledJob) -> int:
         """Converte intervalo do job para segundos"""
@@ -271,8 +467,18 @@ class SchedulerService:
             if self.scheduler.get_job(str(job.id)):
                 self.scheduler.remove_job(str(job.id))
 
-            # Remover notificações relacionadas primeiro (para evitar foreign key constraint)
-            from database.models import Notification
+            # Remover registros relacionados primeiro (para evitar foreign key constraint)
+            from database.models import Notification, NewsletterSent
+
+            # Remove newsletter records
+            newsletter_records = db.query(NewsletterSent).filter(NewsletterSent.job_id == job_id).all()
+            for record in newsletter_records:
+                db.delete(record)
+
+            if newsletter_records:
+                logger.info(f"Removidos {len(newsletter_records)} registros de newsletter relacionados ao job {job_id}")
+
+            # Remove notifications
             notifications = db.query(Notification).filter(Notification.job_id == job_id).all()
             for notification in notifications:
                 db.delete(notification)

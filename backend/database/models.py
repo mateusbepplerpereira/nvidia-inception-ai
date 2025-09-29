@@ -111,7 +111,7 @@ class ScheduledJob(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    task_type = Column(String(100), nullable=False)  # "startup_discovery"
+    task_type = Column(String(100), nullable=False)  # "startup_discovery", "newsletter"
     interval_value = Column(Integer, nullable=False)  # número
     interval_unit = Column(String(20), nullable=False)  # "minutes", "hours", "days", "weeks", "months"
 
@@ -154,3 +154,24 @@ class TaskLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     scheduled_job = relationship("ScheduledJob", back_populates="task_logs")
+
+class NewsletterEmail(Base):
+    __tablename__ = "newsletter_emails"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class NewsletterSent(Base):
+    __tablename__ = "newsletter_sent"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("scheduled_jobs.id", ondelete="CASCADE"))
+    email = Column(String(255), nullable=False)
+    report_data = Column(JSON)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    scheduled_job = relationship("ScheduledJob")

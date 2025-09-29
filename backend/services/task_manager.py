@@ -347,13 +347,9 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
         db.add(notification)
         db.commit()
 
-        # Envia notificação via WebSocket
-        from services.notification_service import notification_service
-        import asyncio
-        try:
-            asyncio.create_task(notification_service.send_notification(notification))
-        except:
-            pass  # Se WebSocket falhar, não quebrar a execução
+        # Notificação será enviada quando o job scheduler detectar a conclusão
+        # O task manager roda em thread separada e não tem acesso ao loop principal
+        print(f"✅ Notificação criada: {notification.title}")
 
         # Atualizar log de erro
         end_time = datetime.now()
@@ -371,17 +367,7 @@ def process_orchestration_task(task_id: int, country: str, sector: str, limit: i
         try:
             db.commit()
 
-            # Enviar notificação via WebSocket se houver uma
-            if 'notification' in locals():
-                try:
-                    from services.notification_service import notification_service
-                    import asyncio
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(notification_service.send_notification(notification))
-                    loop.close()
-                except Exception as ws_error:
-                    print(f"Erro ao enviar notificação via WebSocket: {ws_error}")
+            # WebSocket será enviado pelo scheduler quando o job completar
 
         except Exception as e:
             print(f"Erro ao salvar logs/notificações: {e}")

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { jobsService } from '../services/api';
 import '../styles/modal-scroll.css';
+import NewsletterEmails from '../components/NewsletterEmails';
 
 function Settings() {
   const [jobs, setJobs] = useState([]);
@@ -9,7 +10,7 @@ function Settings() {
   const [editingJob, setEditingJob] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    task_type: 'startup_discovery',
+    task_type: 'newsletter',
     interval_value: 1,
     interval_unit: 'hours',
     task_config: {
@@ -28,7 +29,8 @@ function Settings() {
   ];
 
   const taskTypes = [
-    { value: 'startup_discovery', label: 'Descoberta de Startups' }
+    { value: 'newsletter', label: 'Newsletter (Descoberta + Envio no Email)' },
+    { value: 'startup_discovery', label: 'Descoberta de Startups' },
   ];
 
   // Removidos os arrays de opções - agora tudo será dinâmico
@@ -62,7 +64,7 @@ function Settings() {
       setEditingJob(null);
       setFormData({
         name: '',
-        task_type: 'startup_discovery',
+        task_type: 'newsletter',
         interval_value: 1,
         interval_unit: 'hours',
         task_config: {
@@ -134,7 +136,7 @@ function Settings() {
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">Configurações</h1>
         <button
@@ -142,7 +144,7 @@ function Settings() {
             setEditingJob(null);
             setFormData({
               name: '',
-              task_type: 'startup_discovery',
+              task_type: 'newsletter',
               interval_value: 1,
               interval_unit: 'hours',
               task_config: {
@@ -162,7 +164,7 @@ function Settings() {
       </div>
 
       {/* Tasks Agendadas */}
-      <div className="bg-nvidia-gray rounded-lg overflow-hidden">
+      <div className="bg-nvidia-gray rounded-lg overflow-hidden mt-8">
         <div className="px-6 py-4 bg-nvidia-lightGray">
           <h2 className="text-xl font-semibold text-white">Tasks Agendadas</h2>
           <p className="text-gray-400 text-sm">Configure tarefas automáticas para descoberta de startups</p>
@@ -291,10 +293,15 @@ function Settings() {
         </div>
       </div>
 
+      {/* Newsletter Emails */}
+      <div className="mt-12">
+        <NewsletterEmails />
+      </div>
+
       {/* Modal para Criar/Editar Task */}
       {showModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal-overlay"
           onClick={() => setShowModal(false)}
         >
           <div
@@ -462,7 +469,7 @@ function Settings() {
             </div>
 
             {/* Rodapé com Botões */}
-            <div className="flex justify-end space-x-3 px-4 py-3 border-t border-nvidia-lightGray bg-nvidia-lightGray">
+            <div className="flex justify-end space-x-3 px-4 py-3 border-t border-nvidia-lightGray bg-nvidia-lightGray rounded-b-lg">
               <button
                 type="button"
                 onClick={() => setShowModal(false)}

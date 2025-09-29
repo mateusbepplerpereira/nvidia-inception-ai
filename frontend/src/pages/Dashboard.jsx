@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { startupService, agentService } from '../services/api';
 import ReportModal from '../components/ReportModal';
 
@@ -80,8 +80,7 @@ function Dashboard() {
 
       const sectorDistribution = Object.entries(sectorCounts)
         .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 5);
+        .sort((a, b) => b.value - a.value);
 
       // Get technology distribution
       const techCounts = {};
@@ -271,25 +270,42 @@ function Dashboard() {
         {/* Sector Distribution */}
         <div className="bg-nvidia-gray rounded-lg p-6">
           <h2 className="text-xl font-semibold text-white mb-4">Startups por Setor</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
+          <div className="w-full h-80 mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                layout="vertical"
                 data={stats.sectorDistribution}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
+                margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
               >
-                {stats.sectorDistribution.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
+                <CartesianGrid strokeDasharray="3 3" stroke="#4A4A4A" />
+                <XAxis
+                  type="number"
+                  stroke="#999"
+                  tick={{ fontSize: 12 }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  stroke="#999"
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(value) => value.length > 15 ? `${value.substring(0, 15)}...` : value}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#2D2D2D',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: 'white'
+                  }}
+                />
+                <Bar dataKey="value" fill="#76B900">
+                  {stats.sectorDistribution.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Top Technologies - Full Width */}

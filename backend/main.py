@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import startups, agents, jobs, notifications, logs
+from app.routers import startups, agents, jobs, notifications, logs, newsletter
 from database.connection import engine
 from database import models
 from services.scheduler_service import scheduler_service
@@ -26,6 +26,7 @@ app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Scheduled Jobs"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
 app.include_router(logs.router, prefix="/api/logs", tags=["Task Logs"])
+app.include_router(newsletter.router)
 
 @app.get("/")
 async def root():
@@ -38,6 +39,7 @@ async def root():
             "jobs": "/api/jobs",
             "notifications": "/api/notifications",
             "logs": "/api/logs",
+            "newsletter": "/api/newsletter",
             "docs": "/docs"
         }
     }
