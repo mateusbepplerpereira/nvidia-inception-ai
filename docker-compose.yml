@@ -58,6 +58,15 @@ services:
     networks:
       - nvidia_network
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: nvidia_mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - nvidia_network
+
 volumes:
   postgres_data:
 

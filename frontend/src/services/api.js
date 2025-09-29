@@ -166,4 +166,36 @@ export const logsService = {
   },
 };
 
+export const newsletterService = {
+  async getEmails() {
+    const response = await api.get('/newsletter/emails');
+    return response.data;
+  },
+
+  async getActiveEmails() {
+    const response = await api.get('/newsletter/emails/active');
+    return response.data;
+  },
+
+  async addEmail(data) {
+    const response = await api.post('/newsletter/emails', data);
+    return response.data;
+  },
+
+  async updateEmail(id, data) {
+    const response = await api.put(`/newsletter/emails/${id}`, data);
+    return response.data;
+  },
+
+  async deleteEmail(id) {
+    const response = await api.delete(`/newsletter/emails/${id}`);
+    return response.data;
+  },
+
+  async toggleEmail(id) {
+    const response = await api.post(`/newsletter/emails/${id}/toggle`);
+    return response.data;
+  }
+};
+
 export default api;

@@ -937,6 +937,17 @@ RESPOSTA: JSON array apenas."""},
         issues = []
         validation_scores = {}
 
+        # FIX: Handle case where startup might be a list instead of dict
+        if isinstance(startup, list):
+            logger.warning(f"Startup data is unexpectedly a list: {startup}")
+            return {
+                "is_valid": False,
+                "confidence_score": 0,
+                "validation_scores": {"data_format_score": 0},
+                "issues": ["Formato de dados inválido - esperado dict, recebido list"],
+                "website_valid": False
+            }
+
         # VALIDAÇÃO CRÍTICA DE SETOR - REJEITAR SE INCORRETO
         expected_sector = state.get('sector', '')
         startup_sector = startup.get('sector', '')
@@ -976,7 +987,8 @@ RESPOSTA: JSON array apenas."""},
             issues.append("Website inacessível ou inválido")
 
         # VALIDAÇÃO CRÍTICA DE VENTURE CAPITAL
-        funding_sources = startup.get("sources", {}).get("funding", [])
+        sources = startup.get("sources", {})
+        funding_sources = sources.get("funding", []) if isinstance(sources, dict) else []
         investor_names = startup.get("investor_names", "")
         funding_amount = startup.get("last_funding_amount", 0)
         has_vc = startup.get("has_venture_capital", False)

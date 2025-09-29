@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 class Settings(BaseSettings):
     # OpenAI Configuration
@@ -25,12 +24,9 @@ class Settings(BaseSettings):
     agent_timeout: int = 60
     agent_max_tokens: int = 3000
 
-    # Data Sources (Optional)
-    crunchbase_api_key: Optional[str] = None
-    serper_api_key: Optional[str] = None  # For web search if available
-
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra environment variables
 
 settings = Settings()

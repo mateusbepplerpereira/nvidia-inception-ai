@@ -37,6 +37,13 @@ class NotificationService:
             "created_at": notification.created_at.isoformat() if notification.created_at else None
         }
 
+        await self.send_notification_data(notification_data)
+
+    async def send_notification_data(self, notification_data: dict):
+        """Envia dados de notificação via WebSocket para todos os clientes conectados"""
+        if not self.websocket_connections:
+            return
+
         message = json.dumps({
             "type": "notification",
             "data": notification_data

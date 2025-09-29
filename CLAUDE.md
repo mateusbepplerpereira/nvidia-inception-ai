@@ -134,7 +134,6 @@ Required in `.env`:
 
 Optional:
 - `SERPER_API_KEY`: For enhanced web search capabilities
-- `CRUNCHBASE_API_KEY`: For startup database access
 
 ## Troubleshooting
 
