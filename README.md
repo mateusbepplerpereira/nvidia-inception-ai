@@ -2,11 +2,11 @@
 
 Sistema inteligente para descoberta e análise de startups de IA na América Latina para o programa NVIDIA Inception.
 
-## 🎯 Objetivo
+## Objetivo
 
 Automatizar a descoberta, validação e análise de startups de IA que receberam investimento de Venture Capital, utilizando um pipeline orquestrado de agentes para garantir qualidade e precisão dos dados.
 
-## 🚀 Tecnologias
+## Tecnologias
 
 - **Backend**: FastAPI (Python 3.11)
 - **Orquestração**: LangGraph StateGraph
@@ -14,13 +14,13 @@ Automatizar a descoberta, validação e análise de startups de IA que receberam
 - **Database**: PostgreSQL
 - **Container**: Docker & Docker Compose
 
-## 📋 Requisitos
+## Requisitos
 
 - Docker e Docker Compose
 - Chave de API da OpenAI
 - Python 3.11+ (para desenvolvimento local)
 
-## ⚙️ Configuração
+## Configuração
 
 1. Clone o repositório
 2. Configure o arquivo `.env`:
@@ -40,7 +40,7 @@ docker-compose up -d
 - **Health Check**: http://localhost:8000/health
 - **Adminer** (Debug DB): http://localhost:8080
 
-## 🤖 Arquitetura do Orquestrador
+## Arquitetura do Orquestrador
 
 O sistema utiliza **LangGraph** para orquestrar 3 agentes em pipeline sequencial:
 
@@ -59,9 +59,8 @@ Discovery Agent → Validation Agent → Metrics Agent
 
 2. **Validation Agent** (`_validation_agent`)
    - Valida rigorosamente cada startup:
-     - ✅ **Website**: Verifica acessibilidade (HTTP 200)
-     - ✅ **LinkedIn**: Valida perfis CEO/CTO (formato e acessibilidade)
-     - ✅ **IA de Existência**: Confirma se empresa realmente existe
+     - **Website**: Verifica acessibilidade (HTTP 200)
+     - **IA de Existência**: Confirma se empresa realmente existe
    - Startups válidas → salvos na tabela `startups`
    - Startups inválidas → salvos na tabela `invalid_startups`
 
@@ -96,87 +95,17 @@ class OrchestrationState(TypedDict):
     errors: List[str]
 ```
 
-## 📊 Endpoints da API
+## Endpoints da API
 
-### Orquestração Principal:
-- `POST /api/agents/task/run` - Executa pipeline completo
-- `GET /api/agents/tasks/{task_id}` - Status da task
-- `GET /api/agents/queue/status` - Status da fila
-
-### Consultas e Rankings:
-- `GET /api/agents/metrics/ranking` - Ranking de startups por score
-- `GET /api/agents/invalid/analysis` - Análise de startups inválidas
-- `GET /api/startups` - Listar startups válidas
-- `GET /api/analysis/dashboard` - Dashboard com insights
-
-### Exemplo de Request:
-```json
-POST /api/agents/task/run
-{
-    "country": "Brazil",
-    "sector": "Computer Vision",
-    "limit": 5
-}
 ```
 
-### Exemplo de Response:
-```json
-{
-    "task_id": 123,
-    "status": "pending",
-    "message": "Orchestration pipeline queued (queue size: 1)"
-}
-```
-
-## 💡 Sistema de Filas Assíncronas
+## Sistema de Filas Assíncronas
 
 - **TaskManager Singleton**: Gerencia fila de processamento
 - **Worker Thread**: Processa tasks em background
 - **Status Tracking**: Acompanha progresso via database
 
-## 🗄️ Esquema do Banco de Dados
-
-### Tabelas Principais:
-- `startups` - Startups válidas descobertas
-- `invalid_startups` - Startups rejeitadas na validação
-- `startup_metrics` - Scores e métricas calculadas
-- `agent_tasks` - Controle de tasks e status
-
-### Relacionamentos:
-```
-startups 1:N startup_metrics
-startups 1:N analysis
-startups 1:N leadership
-```
-
-### Debug com Adminer:
-Acesse http://localhost:8080 e use as credenciais:
-- **Sistema**: PostgreSQL
-- **Servidor**: postgres
-- **Usuário**: nvidia_user
-- **Senha**: nvidia_pass
-- **Base de dados**: nvidia_inception_db
-
-## 📁 Estrutura do Projeto
-
-```
-backend/
-├── agents/
-│   └── orchestrator.py     # LangGraph Orchestrator
-├── app/
-│   └── routers/
-│       └── agents.py       # Rota unificada de orquestração
-├── database/
-│   ├── models.py           # Modelos SQLAlchemy
-│   └── connection.py       # Conexão PostgreSQL
-├── services/
-│   ├── agent_service.py    # Persistência de dados
-│   └── task_manager.py     # Gerenciador de filas
-└── schemas/
-    └── agent.py            # Validação Pydantic
-```
-
-## 🎯 Critérios de Scoring
+## Critérios de Scoring
 
 ### Market Demand Score (40%):
 - Setor em alta demanda
@@ -193,23 +122,10 @@ backend/
 - Qualidade dos investidores
 - Potencial de parceria NVIDIA
 
-## 🔄 Fluxo de Operação
+## Fluxo de Operação
 
 1. **Request** → Rota `/task/run` cria task assíncrona
 2. **TaskManager** → Processa via `process_orchestration_task`
 3. **LangGraph** → Executa pipeline Discovery → Validation → Metrics
 4. **Persistência** → Salva resultados no PostgreSQL
 5. **Response** → Cliente consulta status via `/tasks/{id}`
-
-## 📈 Vantagens da Arquitetura
-
-- ✅ **Orquestração Robusta**: LangGraph gerencia estado e fluxo
-- ✅ **Validação Rigorosa**: Múltiplas camadas de verificação
-- ✅ **Contexto Inteligente**: Evita descobertas duplicadas
-- ✅ **Scoring Objetivo**: Métricas quantificáveis para priorização
-- ✅ **Processamento Assíncrono**: Não bloqueia API
-- ✅ **Rastreabilidade**: Logs completos de tokens e performance
-
-## 📝 Documentação
-
-Veja [CLAUDE.md](CLAUDE.md) para documentação técnica detalhada.
