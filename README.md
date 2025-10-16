@@ -168,10 +168,7 @@ O sistema utiliza um algoritmo de métricas baseado em média simples para avali
 - **Momento de Mercado**: Adequação do momento para entrada no setor
 
 ### Pontuação de Nível Técnico
-- **Qualificação do CTO**: Formação técnica e experiência da liderança
 - **Conjunto Tecnológico**: Modernidade e adequação das tecnologias utilizadas
-- **Inovação Técnica**: Grau de diferenciação e propriedade intelectual
-- **Capacidade de Execução**: Histórico de entrega e qualidade técnica
 
 ### Pontuação de Potencial de Parceria
 - **Investimento Recebido**: Valor e qualidade dos rounds de financiamento
